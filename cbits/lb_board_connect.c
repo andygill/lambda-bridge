@@ -5,7 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-int lb_board_connect(int argc,char **argv,int *hds);
+#include "lb_board_connect.h"
+
+// int lb_board_connect(int argc,char **argv,int *hds);
 // <cmd> 
 // -w <number of writing fifos> [default 1]
 // -r <number of reading fifos> [default 1]
@@ -20,7 +22,7 @@ int lb_board_connect(int argc,char **argv,int *hds);
 
 
 
-main(int argc,char **argv){
+int main(int argc,char **argv){
 	printf("Hello (%d)\n",argc);
 	int conn = lb_board_connect(argc,argv,NULL);
 	if (conn == -1) {
