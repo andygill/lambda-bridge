@@ -1,4 +1,10 @@
 boot::
-	gcc -o main main.c
-	gcc -o lb_cat lb_cat.c
-	
+	cabal configure
+	cabal build
+
+bridges::
+	mkdir -p bridges/bin
+
+	make -C bridges/cat
+	make -C bridges/cat install
+

@@ -1,0 +1,16 @@
+Lambda bridge is a generic bridge from Haskell (on a CPU) to VHDL on a FPGA.
+
+In order to use the lambda bridge, you need to set the LB_PATH environment variable.
+
+For example
+
+% export LB_PATH=`pwd`/bridges/bin
+
+If you type
+
+% make bridges
+
+Then the package will attempt to build the bridges (and put them in to bridges/bin)
+
+
+

@@ -1,4 +1,9 @@
--- Example of interacting with a lambda bridge.
+{- 
+ - Example of interacting with a lambda bridge.
+ -
+ - Author: Andy Gill (andygill@ku.edu)
+ -}
+
 
 module Main where
 
@@ -7,7 +12,7 @@ import System.IO
 
 main = do
 	putStrLn "Connecting to 'cat' lambda bridge"
-	([send],[recv]) <- board_connect ["cat","DEBUG"]
+	([send],[recv]) <- board_connect (1,1) ["cat","--debug"] 
 
 	hPutStrLn send "Hello, World!"
 	hFlush send

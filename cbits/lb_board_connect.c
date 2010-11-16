@@ -1,3 +1,12 @@
+/*
+ * Copyright (c) 2010 The University of Kansas
+ * All rights reserved.
+ * 
+ * Author: Andy Gill (andygill@ku.edu)
+ *
+ * invoke the driver, please. Nominal error checking.
+ */
+
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <unistd.h>
@@ -6,6 +15,8 @@
 #include <string.h>
 
 #include "lb_board_connect.h"
+
+#define DEBUG 0
 
 char *lb_allocint(int value);
 
@@ -16,7 +27,7 @@ int lb_board_connect(int argc,char **argv, int sends, int recvs, int *hds) {
 	int c = 0;
 	
 	char *lb_path = getenv("LB_PATH");
-	printf("(%s)\n",lb_path);
+	if (DEBUG) { fprintf(stderr,"lb_board_connect: LB_PATH=%s\n",lb_path); }
 	if (lb_path == NULL) {
 		return -1;
 	}
@@ -26,31 +37,9 @@ int lb_board_connect(int argc,char **argv, int sends, int recvs, int *hds) {
 	}
 
 	for(i = 0;i < argc;i++) {
-		printf("%d(%s)\n",i,argv[i]);
+		if (DEBUG) { fprintf(stderr,"lb_board_connect: argv[%d] = '%s'\n",i,argv[i]); }
 	}
 
-/*
-	char **argv2 = malloc(sizeof(char *) * argc);
-	int c2 = 0;
-		
-	while(i < argc) {
-		printf("%d => <<%s>>\n",i,argv[i]);
-		if (strcmp(argv[i],"-w") == 0) {
-			i++;
-			if (i < argc) {
-				wt_hd = atoi(argv[i]);
-			}
-	} else if (strcmp(argv[i],"-r") == 0) {
-			i++;
-			if (i < argc) {
-				rd_hd = atoi(argv[i]);
-			}
-		} else {
-			argv2[c2++] = argv[i];
-		}
-		i++;
-	}
-*/
 
 	int *wr_fds = malloc(sizeof(int) * (wt_hd * 2));
 	for(i = 0;i < wt_hd;i++) {
@@ -80,34 +69,33 @@ int lb_board_connect(int argc,char **argv, int sends, int recvs, int *hds) {
 		strcpy(&driver[0],preamble);
 		strcpy(&driver[strlen(preamble)],argv[1]);
 
-		char **argv3 = malloc(sizeof(char *) * (argc + wt_hd + rd_hd + 3));
-		int c3 = 0;
+		char **argv2 = malloc(sizeof(char *) * (argc + wt_hd + rd_hd + 3));
+		int c = 0;
 
-		argv3[c3++] = &driver[0];
-		argv3[c3++] = lb_allocint(wt_hd);
+		argv2[c++] = &driver[0];
+		argv2[c++] = lb_allocint(wt_hd);
 		for(i = 0;i < wt_hd;i++) {
-			argv3[c3++] = lb_allocint(wr_fds[i*2]);
+			argv2[c++] = lb_allocint(wr_fds[i*2]);
 		}
-		argv3[c3++] = lb_allocint(rd_hd);
+		argv2[c++] = lb_allocint(rd_hd);
 		for(i = 0;i < rd_hd;i++) {
-			argv3[c3++] = lb_allocint(rd_fds[i*2+1]);
+			argv2[c++] = lb_allocint(rd_fds[i*2+1]);
 		}		
 		for(i = 1;i < argc;i++) {
-			argv3[c3++] = argv[i];
+			argv2[c++] = argv[i];
 		}
-		argv3[c3] = NULL;
+		argv2[c] = NULL;
 
-		for(i = 0;i <= c3;i++) {
-			printf(":: (%s)\n",argv3[i]);
+
+		if (DEBUG) { fprintf(stderr,"lb_board_connect: driver = '%s'\n",driver); }
+		for(i = 0;i < c;i++) {
+			if (DEBUG) { fprintf(stderr,"lb_board_connect: argv2[%d] = '%s'\n",i,argv2[i]); }
 		}
-		
-		printf("(%s)::\n",driver);
 
-		execvP(driver,lb_path,argv3);
+		execvP(driver,lb_path,argv2);
 
 		fprintf(stderr,"The `%s' driver (%s) was not found\n",argv[1],driver);
-
-		exit(0);
+		exit(-1);
 	}
 
 	// Close end of the pipes we are not going to use
@@ -120,8 +108,6 @@ int lb_board_connect(int argc,char **argv, int sends, int recvs, int *hds) {
 		hds[c++] = rd_fds[i*2];
 		close(rd_fds[i*2+1]);
 	}
-
-	printf("%d %d\n",wt_hd,rd_hd);
 
 	return 0;
 }

@@ -40,7 +40,7 @@ main(int argc,char **argv){
 	rd_hd = atoi(argv[4]);
 
 	if (argc == 7) {
-		if (strcmp(argv[6],"DEBUG") == 0) {
+		if (strcmp(argv[6],"--debug") == 0) {
 			DEBUG = 1;
 			fprintf(stderr,"lb_cat: DEBUG mode on for lb_cat\n");
 		}
@@ -58,7 +58,7 @@ main(int argc,char **argv){
 			fprintf(stderr,"lb_cat: EOF found, terminating\n");
 			exit(-1);
 		}		
-		if (DEBUG) { fprintf(stderr,"lb_cat: cat found 0x%x (%d)\n",str[0],sz); }
+		if (DEBUG) { fprintf(stderr,"lb_cat: cat found 0x%x\n",str[0]); }
 		sz = write(rd_hd,str,1);
 		if (sz == -1) {
 			fprintf(stderr,"lb_cat: terminated: %s\n",strerror(errno));
