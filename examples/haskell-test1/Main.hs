@@ -12,7 +12,7 @@ import System.IO
 
 main = do
 	putStrLn "Connecting to 'cat' lambda bridge"
-	([send],[recv]) <- board_connect (1,1) ["cat","--debug"] 
+	([send],[recv]) <- board_connect (1,1) ["lb_cat","--debug"] 
 
 	hPutStrLn send "Hello, World!"
 	hFlush send
