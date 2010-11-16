@@ -1,5 +1,5 @@
 Name:                lambda-bridge
-Version:             0.1
+Version:             0.2
 Synopsis:            A bridge from Haskell (on a CPU) to VHDL on a FPGA.
 Description:         A bridge from Haskell (on a CPU) to VHDL on a FPGA.
 License:             BSD3
@@ -8,7 +8,7 @@ Author:              Andy Gill <andygill@ku.edu>
 Maintainer:          Andy Gill <andygill@ku.edu>
 Homepage:            http://www.ittc.ku.edu/csdl/fpg/Tools/LambdaBridge
 Stability:           Experimental
-Category:            Foreign, Hardware
+Category:            Foreign, Hardware, Middleware, Network
 Tested-With:         GHC == 6.12.1
 Cabal-Version:       >= 1.8
 Build-Type:          Simple
@@ -27,18 +27,30 @@ Flag example
 Library
   Build-Depends:   base >= 4 && < 5
   Exposed-Modules:     Foreign.LambdaBridge
+                       Foreign.LambdaBridge.Service
   Hs-Source-Dirs:      .
   Extensions:          ForeignFunctionInterface
   C-Sources:           connect/lb_board_connect.c
   Include-Dirs:        connect                       
 
 Executable haskell-test1
-   if flag(example)
-     Build-Depends: 	base >= 4 && < 5
-     Hs-Source-Dirs: 	.  examples/haskell-test1
-   else
-     Build-Depends:
+   Build-Depends: 	base >= 4 && < 5
+   Hs-Source-Dirs: 	.  examples/haskell-test1
    C-Sources:           connect/lb_board_connect.c
    Include-Dirs:        connect
    Main-Is: Main.hs
+
+Executable haskell-test2
+   Build-Depends: 	base >= 4 && < 5
+   Hs-Source-Dirs: 	.  examples/haskell-test2
+   C-Sources:           connect/lb_board_connect.c
+   Include-Dirs:        connect
+   Main-Is: Main.hs
+
+Executable haskell-test2-bridge
+   Build-Depends: 	base >= 4 && < 5
+   Hs-Source-Dirs: 	.  examples/haskell-test2
+   C-Sources:           connect/lb_board_connect.c
+   Include-Dirs:        connect
+   Main-Is: Bridge.hs
 
