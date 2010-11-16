@@ -34,5 +34,7 @@ Executable haskell-test1
      Hs-Source-Dirs: 	.  examples/haskell-test1
    else
      Build-Depends:
+   C-Sources:           cbits/lb_board_connect.c
+   Include-Dirs:        cbits
    Main-Is: Main.hs
 
