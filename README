@@ -5,12 +5,15 @@ In order to use the lambda bridge, you need to set the LB_PATH environment varia
 For example
 
 % export LB_PATH=`pwd`/bridges/bin
+or
+% export LB_PATH=`pwd`/bridges/bin:`pwd`/dist/build/haskell-test2-bridge
 
 If you type
 
 % make bridges
 
 Then the package will attempt to build the bridges (and put them in to bridges/bin)
+
 
 
 
