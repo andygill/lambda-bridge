@@ -26,12 +26,6 @@ int lb_board_connect(int argc,char **argv, int sends, int recvs, int *hds) {
 	int i = 1;
 	int c = 0;
 	
-	char *lb_path = getenv("LB_PATH");
-	if (DEBUG) { fprintf(stderr,"lb_board_connect: LB_PATH=%s\n",lb_path); }
-	if (lb_path == NULL) {
-		return -1;
-	}
-
 	if (argc < 2) {
 		return -1;
 	}
@@ -92,7 +86,7 @@ int lb_board_connect(int argc,char **argv, int sends, int recvs, int *hds) {
 			if (DEBUG) { fprintf(stderr,"lb_board_connect: argv2[%d] = '%s'\n",i,argv2[i]); }
 		}
 
-		execvP(driver,lb_path,argv2);
+		execvp(driver,argv2);
 
 		fprintf(stderr,"The `%s' driver (%s) was not found\n",argv[1],driver);
 		exit(-1);
