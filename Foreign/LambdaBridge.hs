@@ -1,6 +1,6 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 
-module Foreign.LambdaBridge (board_connect) where
+module Foreign.LambdaBridge (simple_board_connect, board_connect) where
 
 import Foreign.C
 import Foreign.Ptr
@@ -10,7 +10,18 @@ import Foreign.Storable
 import GHC.IO.Handle.FD
 import System.IO (Handle)
 
--- | 'board_connect' connects to a FPGA, via a specified lambda-bridge driver.
+
+-- | 'simple_board_connect' connects to a FPGA, via a specified lambda-bridge driver.
+
+simple_board_connect :: [String] -> IO (Handle,Handle)
+simple_board_connect argv = do
+	(sends,recvs) <- board_connect (1,1) argv
+	case (sends,recvs) of
+	  ([s],[r]) -> return (s,r)
+	  _ -> error $ "simple_board_connect failed, wrong number of channels opened"
+
+-- | 'board_connect' connects to a FPGA, via a specified lambda-bridge driver,
+--  and allows for multiple SEND and RECV channels.
 
 board_connect :: (Int,Int) -> [String] -> IO ([Handle],[Handle])
 board_connect (1,1) argv = do
