@@ -58,7 +58,7 @@ int lb_board_connect(int argc,char **argv, int sends, int recvs, int *hds) {
 		}
 		
 		char *preamble = ""; // no preamble now "lb_";
-		char *driver = malloc(sizeof(char) * (strlen(argv[1]) + strlen(preamble)));
+		char *driver = malloc(sizeof(char) * (strlen(argv[1]) + strlen(preamble)) + 1);
 	
 		strcpy(&driver[0],preamble);
 		strcpy(&driver[strlen(preamble)],argv[1]);
