@@ -25,13 +25,34 @@ Flag example
   Description: build the single example
 
 Library
-  Build-Depends:   base >= 4 && < 5
+  Build-Depends:   base >= 4 && < 5, binary, bytestring
   Exposed-Modules:     Foreign.LambdaBridge
                        Foreign.LambdaBridge.Service
+                       Foreign.LambdaBridge.ARQ
   Hs-Source-Dirs:      .
   Extensions:          ForeignFunctionInterface
   C-Sources:           connect/lb_board_connect.c
   Include-Dirs:        connect                       
+
+-- Now the bridges.
+
+Executable lb_udp
+   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring
+   Hs-Source-Dirs: 	.  bridges/udp
+   Main-Is: Main.hs
+
+-- And the runners
+
+Executable udp_lbshell
+   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring
+   Hs-Source-Dirs: 	.  runners/udp_lbshell
+   C-Sources:           connect/lb_board_connect.c
+   Include-Dirs:        connect
+   Main-Is: Main.hs
+
+
+
+-- And tests
 
 Executable haskell-test1
    Build-Depends: 	base >= 4 && < 5
@@ -47,10 +68,10 @@ Executable haskell-test2
    Include-Dirs:        connect
    Main-Is: Main.hs
 
-Executable haskell-test2-bridge
-   Build-Depends: 	base >= 4 && < 5
-   Hs-Source-Dirs: 	.  examples/haskell-test2
+Executable haskell-test3
+   Build-Depends: 	base >= 4 && < 5, binary, bytestring
+   Hs-Source-Dirs: 	.  examples/haskell-test3
    C-Sources:           connect/lb_board_connect.c
    Include-Dirs:        connect
-   Main-Is: Bridge.hs
+   Main-Is: Main.hs
 
