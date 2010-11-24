@@ -11,9 +11,11 @@ import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString as BS
 import Data.Char as Char
 import Network.Socket hiding (send, sendTo, recv, recvFrom)
-import Network.Socket.ByteString.Lazy
+import Network.Socket.ByteString
 import Control.Concurrent
 import Control.Concurrent.MVar
+import System.Timeout 
+import System.Random
 
 import Prelude hiding (getContents)
 
@@ -35,51 +37,127 @@ main = bridge_service $ \ args sends recvs -> do
 	case (args,sends,recvs) of
 	  (remote_cmd:hostname:port:rest,[s],[r]) -> do
 		print $ "got" ++ show (hostname,port,rest,s,r)
-       		addrinfos <- getAddrInfo Nothing (Just hostname) (Just port)
-		print addrinfos
-       		let serveraddr = head addrinfos
-       		sock <- socket (addrFamily serveraddr) Datagram defaultProtocol
-		print sock
-{-
-		hd <- socketToHandle sock ReadWriteMode
-		hPutStrLn "Hello\n" hd
-		hFlush hd
-		print hd
--}		
+		let rnd = NoRandomErrors
 
-	 	connect sock (addrAddress serveraddr)
+ 		addrinfos <- getAddrInfo 
+                    (Just (defaultHints {addrFlags = [AI_PASSIVE]}))
+                    (Just hostname) (Just port)
+		let serveraddr = head addrinfos
 
-		sp <- socketPort sock
-		print sp
+       		sock <- socket AF_INET Datagram defaultProtocol
 
---		sendAll sock $ encode (0x1234 :: Word32)
---		sendAll sock $ encode (0x1234 :: Word32)
-		
-		
---		listen sock 1
+	 	connect sock $ addrAddress serveraddr
 
+		toSendVar <- newEmptyMVar :: IO (MVar Data)
 		sendVar <- newEmptyMVar :: IO (MVar Packet)
-		recvVar <- newEmptyMVar :: IO (MVar Packet)
+		ackVar  <- newEmptyMVar :: IO (MVar Ack)
+		recvVar <- newEmptyMVar :: IO (MVar Data)
+		haveRecvVar <- newEmptyMVar :: IO (MVar Data)
+
+		-- Send a starting volley
+		putMVar toSendVar $ Data 0 0 (BS.pack [0xde,0xad,0xbe,0xef])
+
+		forkIOs 
+		  [ loop 1 $ \ n -> do
+			hWaitForInput s (-1)
+			bs <- BS.hGetNonBlocking s 100
+			print ("STDIN",bs)
+			putMVar toSendVar (Data n 1 bs)
+			return $ n + 1
+
+		-- This waits for awk's when sending packets
+		  , sendWaitingForAck 
+				(takeMVar toSendVar)
+				(takeMVar ackVar)
+				(putMVar sendVar)
 
 		-- This connects the "sendVar" MVar with the outgoing connection.
-		-- putting something onto this MVar will send it over the connection.
-		forkIO $ loop $ do
-			packet <- takeMVar sendVar
-			sendAll sock $ encode packet
+		  , sendBits rnd (takeMVar sendVar) (sendAll sock)
+		
+		  , recvBits rnd
+			     (recv sock  (fromIntegral maxPacketSize))
+			     (putMVar recvVar)
+			     (putMVar ackVar)
 
-		forkIO $ loop $ do
+		  , recvReplyWithAck 0 (takeMVar recvVar) (putMVar sendVar) (putMVar haveRecvVar)
+
+		  , loop () $ \ () -> do
+			(Data pack chanId bs) <- takeMVar haveRecvVar
+			case chanId of
+				0 -> print ("CONTROL",bs)
+			 	1 -> BS.hPut r bs
+			return ()
+
+		  ]
+
+{-
+
+
+		forkIO $ loop () $ \ () -> do
 			bs <- recv sock (fromIntegral maxPacketSize)
-			print bs
-			putMVar recvVar (decode bs)
+			case decode bs of
+			  p@(Data {}) -> do putMVar recvVar p
+			  Ack p_id   -> do putMVar ackVar p_id
+			  _ -> do hPutStrLn stderr "badly formed packet received (ignoring)"
+				  return ()
 
-		putMVar sendVar (Init 0x1234 1 1)
+
+		-- start the connections discussion
+		putMVar toSendVar (Init 0 0)
+
+		-- start at packet 1
+		forkIO $ loop 1 $ \ n -> do
+			putMVar toSendVar (Data n 0 $ BS.pack (map (fromIntegral . Char.ord) $ show $ "line " ++ show n))
+			return (n+1)
+
+{-
+		forkIO $ loop 0 $ \ p_id -> do
+			bs <- takeMVar toSendVar
+			return p_id
+-}
+		forkIO $ loop Nothing $ \ optPacket -> do
+			-- TODO: include awks here
+			-- Can only be data (or Init, which is a first data packet)
+			p <- case optPacket of
+				Nothing -> takeMVar toSendVar 	-- really to 
+				Just p' -> return p'
+			let p_no = case p of
+			   	Data p_no _ _ -> p_no
+			 	Init {}       -> 0
+			  	Ack {}        -> error "Bad Ack in input data stream"
+			-- send the packet
+			putMVar sendVar p
+
+			-- TODO: add timeout
+			ack <- timeout (-1) $ takeMVar ackVar
+			print ack
+			case ack of
+				-- timeout happened, try send packet again
+			   Nothing -> return (Just p)
+				-- done, move one
+			   Just p_no' | p_no' == p_no -> return Nothing 	
+			   other -> error $ show ("BAD BAD BAD",other,p_no)
+
+
+
+
+
+		loop 1 $ \ n -> do
+			p <- takeMVar haveRecvVar
+			print (n,"FINALLY",p)
+			return (n+1)
+
+-}
+{-
+		putMVar sendVar (Init 1 1)
 		print "waiting"
 		p <- takeMVar recvVar
 		print "done"
 		print p
 		print "waiting"
-		putMVar sendVar (Ack 893 127)
+		putMVar sendVar (Ack 127)
 		print "waiting"
+-}
 
 {-
 		repeatOnTimeout 0.1 $ do
@@ -103,9 +181,16 @@ main = bridge_service $ \ args sends recvs -> do
 		return ()
    	  _ -> error $ "Bad options to remote bridge"
 
+forkIOs :: [IO ()] -> IO ()
+forkIOs [] = return ()
+forkIOs [x] = x
+forkIOs (x:xs) = do { forkIO x ; forkIOs xs }
 
-loop :: IO () -> IO ()
-loop m = do m ; loop m
+	
+loop :: a -> (a -> IO a) -> IO ()
+loop a m = do 
+	a' <- m a
+	loop a' m 
 
 {-
 
@@ -135,7 +220,6 @@ sendstr sock addr omsg = do sent <- sendTo sock omsg addr
 			    print sent
 			    sendstr sock addr (genericDrop sent omsg)
 -}
-loop m = do m ; loop m
 
 {-
 openlog :: HostName             -- ^ Remote hostname, or localhost
