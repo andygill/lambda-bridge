@@ -11,9 +11,12 @@ import Foreign.LambdaBridge
 import System.IO
 import Control.Concurrent
 
+--host = "rome",
+host = "127.0.0.1" --- "localhost", "127.0.0.1", -
+
 main = do
 	putStrLn "Connecting to a remote lambda bridge"
-	(send,recv) <- simple_board_connect ["./dist/build/lb_udp/lb_udp","127.0.0.1","9237"]
+	(send,recv) <- simple_board_connect ["./dist/build/lb_udp/lb_udp", host, "9237"]
 
 	let loop n = do
 		hPutStrLn send $ "Hello, World!: " ++ show n

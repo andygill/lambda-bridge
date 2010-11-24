@@ -28,18 +28,12 @@ main = do
 	let rnd = NoRandomErrors
 
 	let port = "9237"
- 	addrinfos <- getAddrInfo 
-                    (Just (defaultHints {addrFlags = [AI_PASSIVE]}))
-                    (Just "127.0.0.1")  (Just port)
-	let serveraddr = head addrinfos
-
-	print serveraddr
 
 	-- Create a socket
-	sock <- socket (addrFamily serveraddr) Datagram defaultProtocol
+    	sock <- socket AF_INET Datagram defaultProtocol
 
 	-- Bind it to the address we're listening to
-	bindSocket sock (addrAddress serveraddr)
+	bindSocket sock $ SockAddrInet (fromIntegral (read port :: Integer)) iNADDR_ANY
 
 	print "pre list"
 --	listen sock 1
