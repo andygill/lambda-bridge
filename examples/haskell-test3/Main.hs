@@ -11,7 +11,7 @@ import Foreign.LambdaBridge
 import System.IO
 import Control.Concurrent
 
---host = "rome",
+--host = "rome"
 host = "127.0.0.1" --- "localhost", "127.0.0.1", -
 
 main = do

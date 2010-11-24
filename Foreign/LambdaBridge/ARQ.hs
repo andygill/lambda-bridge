@@ -64,12 +64,12 @@ instance Binary Packet where
 		    _ -> return $ BadPacket
 
 
-sendWaitingForAck :: IO Data -> IO Ack -> (Packet -> IO ()) -> IO ()
-sendWaitingForAck takeToSendVar takeAck putSend = do
-	p <- takeToSendVar
-	sendWaitingForAck' p takeToSendVar takeAck putSend
+sendWaitingForAck :: PacketId -> IO (ChannelId,BS.ByteString) -> IO Ack -> (Packet -> IO ()) -> IO ()
+sendWaitingForAck p_id takeToSendVar takeAck putSend = do
+	(chan,bs) <- takeToSendVar
+	sendWaitingForAck' p_id (Data p_id chan bs) takeToSendVar takeAck putSend
 
-sendWaitingForAck' p@(Data p_no _ _) takeToSendVar takeAck putSend = do
+sendWaitingForAck' p_no p takeToSendVar takeAck putSend = do
 	-- send the packet
 	putSend (DataPacket p)
 
@@ -79,20 +79,18 @@ sendWaitingForAck' p@(Data p_no _ _) takeToSendVar takeAck putSend = do
 		   (Ack ack) <- takeAck
 		   if ack == p_no then return () else loop in loop
 
-	print getAck
 	case getAck of
 		-- timeout happened, try send packet again
-	   Nothing -> sendWaitingForAck' p takeToSendVar takeAck putSend
+	   Nothing -> sendWaitingForAck' p_no p takeToSendVar takeAck putSend
 		-- done, move on please
-	   Just () -> sendWaitingForAck takeToSendVar takeAck putSend
+	   Just () -> sendWaitingForAck (succ p_no) takeToSendVar takeAck putSend
 
-recvReplyWithAck :: PacketId -> IO Data -> (Packet -> IO ()) -> (Data -> IO ()) -> IO ()
+recvReplyWithAck :: PacketId -> IO Data -> (Packet -> IO ()) -> ((ChannelId,BS.ByteString) -> IO ()) -> IO ()
 recvReplyWithAck n takeRecvVar putSendVar putHaveRecvVar = do
 		p@(Data packId chanId bs) <- takeRecvVar
 		putSendVar (AckPacket $ Ack packId)	-- *always* send an awk
 		if packId == n then do
-			print (chanId,bs)
-			putHaveRecvVar p
+			putHaveRecvVar (chanId,bs)
 			recvReplyWithAck (n+1) takeRecvVar putSendVar putHaveRecvVar
 		     -- Otherwise, just ignore the (out of order) packet
 		     -- and eventually the client will resend (because there is no Ack)
@@ -125,3 +123,52 @@ recvBits err takeRecv putRecvVar putAckVar = do
 	  _ -> do hPutStrLn stderr "badly formed packet received (ignoring)"
 		  return ()
 	recvBits err takeRecv putRecvVar putAckVar 
+
+data ARQ_Options = ARQ_Options
+	{ toSocket 	  :: BS.ByteString -> IO ()	-- 
+	, fromSocket 	  :: IO BS.ByteString
+	, transmitFailure :: Maybe Float
+	, receiveFailure  :: Maybe Float
+	}
+
+data ARQ_Protocol = ARQ_Protocol
+	{ sendByteString :: (ChannelId,BS.ByteString) -> IO ()
+	, recvByteString :: IO (ChannelId,BS.ByteString)
+	}
+	
+arqProtocol :: ARQ_Options -> IO ARQ_Protocol
+arqProtocol opts = do
+	let rnd = NoRandomErrors
+	toSendVar <- newEmptyMVar :: IO (MVar (ChannelId,BS.ByteString))
+	sendVar <- newEmptyMVar :: IO (MVar Packet)
+	ackVar  <- newEmptyMVar :: IO (MVar Ack)
+	recvVar <- newEmptyMVar :: IO (MVar Data)
+	haveRecvVar <- newEmptyMVar :: IO (MVar (ChannelId,BS.ByteString))
+
+		-- This waits for awk's when sending packets
+	forkIO $  sendWaitingForAck 0
+				(takeMVar toSendVar)
+				(takeMVar ackVar)
+				(putMVar sendVar)
+
+		-- This connects the "sendVar" MVar with the outgoing connection.
+	forkIO $ sendBits rnd (takeMVar sendVar) (toSocket opts)
+		
+
+		-- This send bits over the connection
+	forkIO $ recvBits rnd
+			     (fromSocket opts)
+			     (putMVar recvVar)
+			     (putMVar ackVar)
+
+		-- This sends acks
+	forkIO $ recvReplyWithAck 0 
+				(takeMVar recvVar) 
+				(putMVar sendVar) 
+				(putMVar haveRecvVar)
+
+	return $ ARQ_Protocol
+	  { sendByteString = \ (chanId,bs) -> putMVar toSendVar (chanId,bs)
+	  , recvByteString = takeMVar haveRecvVar
+	  }
+
