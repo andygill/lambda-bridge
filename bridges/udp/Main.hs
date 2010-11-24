@@ -55,6 +55,9 @@ main = bridge_service $ \ args sends recvs -> do
 			, receiveFailure  = Nothing
 			}
 
+		-- Send first volley, to start the service
+		sendByteString protocol (0,BS.pack [0xde,0xad,0xbe,0xef])
+
 		forkIO $ 
 		   let loop = do
 			hWaitForInput s (-1)
