@@ -83,7 +83,7 @@ sendWaitingForAck' p_no p takeToSendVar takeAck putSend = do
 		-- timeout happened, try send packet again
 	   Nothing -> sendWaitingForAck' p_no p takeToSendVar takeAck putSend
 		-- done, move on please
-	   Just () -> sendWaitingForAck (succ p_no) takeToSendVar takeAck putSend
+	   Just () -> sendWaitingForAck (p_no + 1) takeToSendVar takeAck putSend
 
 recvReplyWithAck :: PacketId -> IO Data -> (Packet -> IO ()) -> ((ChannelId,BS.ByteString) -> IO ()) -> IO ()
 recvReplyWithAck n takeRecvVar putSendVar putHaveRecvVar = do
@@ -91,7 +91,7 @@ recvReplyWithAck n takeRecvVar putSendVar putHaveRecvVar = do
 		putSendVar (AckPacket $ Ack packId)	-- *always* send an awk
 		if packId == n then do
 			putHaveRecvVar (chanId,bs)
-			recvReplyWithAck (n+1) takeRecvVar putSendVar putHaveRecvVar
+			recvReplyWithAck (n + 1) takeRecvVar putSendVar putHaveRecvVar
 		     -- Otherwise, just ignore the (out of order) packet
 		     -- and eventually the client will resend (because there is no Ack)
 		     -- Todo: consider Nack		
