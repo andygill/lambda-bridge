@@ -8,7 +8,7 @@ import Foreign.Marshal.Alloc
 import Foreign.Marshal.Array
 import Foreign.Storable
 import GHC.IO.Handle.FD
-import System.IO (Handle)
+import System.IO
 
 
 -- | 'simple_board_connect' connects to a FPGA, via a specified lambda-bridge driver.
@@ -40,6 +40,7 @@ board_connect (1,1) argv = do
 	hds <- sequence [ do i <- peekElemOff hds_ptr i
 	 		     fdToHandle i 
 	                | i <- take 2 [0..]]
+	sequence_ [ hSetBuffering hd NoBuffering | hd <- hds ]
 	return ([hds !! 0],[hds !! 1])
 board_connect _ _ = error $ "board_connect: only single FIFOs in each direction are currently supported"
 
