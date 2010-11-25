@@ -23,22 +23,40 @@ import Foreign.LambdaBridge
 import Foreign.LambdaBridge.ARQ
 
 main = do
-	let port = "9237"
+	args <- getArgs
+	putStrLn $ "Seting up to a udp-shell lambda bridge using " ++ show args 
+	let (port:style:_) = args
+	
+	args <- return $ drop 2 args
+
+	let sockType = case style of
+		  "UDP" -> Datagram
+		  "TCP" -> Stream
+		  _     -> error "is this UDP?"
 
 	-- Create a socket
-    	sock <- socket AF_INET Datagram defaultProtocol
+	sock <- socket AF_INET sockType defaultProtocol
 
 	-- Bind it to the address we're listening to
 	bindSocket sock $ SockAddrInet (fromIntegral (read port :: Integer)) iNADDR_ANY
 
 	-- semaphore for init for channel
 	connVar <- newMVar () :: IO (MVar ())
+	
+	sock <- case sockType of
+		  Datagram -> return sock
+		  Stream -> do 
+			-- do not connect the socket
+			tryTakeMVar connVar
+			listen sock 1
+			(sock2,_) <- accept sock
+			return sock2
 
 	protocol <- arqProtocol $ ARQ_Options
-		{ toSocket 	  = sendAll sock
-		, fromSocket 	  = do
+		{ toSocket	  = sendAll sock
+		, fromSocket	  = do
 			(bs,from) <- recvFrom sock 2048
-			-- Connect *once*
+			-- Connect *once*, if Datagram
 			conn <- tryTakeMVar connVar
 			case conn of
 			  Just f -> connect sock from
@@ -48,8 +66,7 @@ main = do
 		, receiveFailure  = Nothing
 		}
 
-	args <- getArgs
-	putStrLn $ "Seting up to a udp-shell lambda bridge using " ++ show args 
+
 	putStrLn $ "waiting for remote stream(s)"
 
 	(chanId,bs) <- recvByteString protocol

@@ -32,15 +32,20 @@ data SessionHandle = SessionHandle Socket SockAddr
 main = bridge_service $ \ args sends recvs -> do
 	hPutStrLn stderr "Remote Service:"
 	case (args,sends,recvs) of
-	  (remote_cmd:hostname:port:rest,[s],[r]) -> do
+	  (remote_cmd:hostname:port:style:rest,[s],[r]) -> do
 		print $ "got" ++ show (hostname,port,rest,s,r)
+
+		let sockType = case style of
+			  "UDP" -> Datagram
+			  "TCP" -> Stream
+			  _     -> error "is this UDP?"
 
  		addrinfos <- getAddrInfo 
                     (Just (defaultHints {addrFlags = [AI_PASSIVE]}))
                     (Just hostname) (Just port)
 		let serveraddr = head addrinfos
 
-       		sock <- socket AF_INET Datagram defaultProtocol
+		sock <- socket AF_INET sockType defaultProtocol
 
 	 	connect sock $ addrAddress serveraddr
 
