@@ -3,7 +3,6 @@ module Main where
 import System.IO
 import Data.Char (toUpper)
 import Data.Bits
---import Network.Socket
 import Network.BSD
 import Data.List
 import Data.Binary
@@ -16,13 +15,12 @@ import Control.Concurrent
 import Control.Concurrent.MVar
 import System.Timeout 
 import System.Random
+import System.Environment
 
 import Prelude hiding (getContents)
 
+import Foreign.LambdaBridge
 import Foreign.LambdaBridge.ARQ
-
-maxPacketSize :: Int
-maxPacketSize = 2000
 
 main = do
 	let port = "9237"
@@ -39,7 +37,7 @@ main = do
 	protocol <- arqProtocol $ ARQ_Options
 		{ toSocket 	  = sendAll sock
 		, fromSocket 	  = do
-			(bs,from) <- recvFrom sock 2000
+			(bs,from) <- recvFrom sock 2048
 			-- Connect *once*
 			conn <- tryTakeMVar connVar
 			case conn of
@@ -50,13 +48,32 @@ main = do
 		, receiveFailure  = Nothing
 		}
 
+	args <- getArgs
+	putStrLn $ "Seting up to a udp-shell lambda bridge using " ++ show args 
+	putStrLn $ "waiting for remote stream(s)"
 
+	(chanId,bs) <- recvByteString protocol
 
+	putStrLn $ "invoking lambda bridge"
+
+	(send,recv) <- simple_board_connect args
+
+	putStrLn $ "connected."
+	
 	let loop = do
 		(chanId,bs) <- recvByteString protocol
 		case chanId of
 			0 -> print ("CONTROL:",bs)
-		 	1 -> sendByteString protocol (1,bs)
+		 	1 -> BS.hPutStr send bs
 		loop
 
+	forkIO loop
+
+	let loop = do
+		hWaitForInput recv (-1)
+		bs <- BS.hGetNonBlocking recv 1024
+		sendByteString protocol (1,bs)
+		loop 
+
 	loop
+

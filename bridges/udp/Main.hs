@@ -27,9 +27,6 @@ import Foreign.LambdaBridge.ARQ
 
 -- How much to listen for
 
-maxPacketSize :: Int
-maxPacketSize = 2000
-
 data SessionHandle = SessionHandle Socket SockAddr
 
 main = bridge_service $ \ args sends recvs -> do
@@ -37,7 +34,6 @@ main = bridge_service $ \ args sends recvs -> do
 	case (args,sends,recvs) of
 	  (remote_cmd:hostname:port:rest,[s],[r]) -> do
 		print $ "got" ++ show (hostname,port,rest,s,r)
-		let rnd = NoRandomErrors
 
  		addrinfos <- getAddrInfo 
                     (Just (defaultHints {addrFlags = [AI_PASSIVE]}))
@@ -50,7 +46,7 @@ main = bridge_service $ \ args sends recvs -> do
 
 		protocol <- arqProtocol $ ARQ_Options
 			{ toSocket 	  = sendAll sock
-			, fromSocket 	  = recv sock (fromIntegral maxPacketSize)
+			, fromSocket 	  = recv sock 2048
 			, transmitFailure = Nothing
 			, receiveFailure  = Nothing
 			}
@@ -61,7 +57,7 @@ main = bridge_service $ \ args sends recvs -> do
 		forkIO $ 
 		   let loop = do
 			hWaitForInput s (-1)
-			bs <- BS.hGetNonBlocking s 100	-- 100???
+			bs <- BS.hGetNonBlocking s 1024
 			sendByteString protocol (1,bs)
 			loop 
 		   in loop
