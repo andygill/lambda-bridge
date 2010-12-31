@@ -1,17 +1,14 @@
--- Implementation of ARQ; http://en.wikipedia.org/wiki/Automatic_repeat_request
--- Can be used to put a lightweight reliable link on top of an unreliable packet, like UDP, or a unreliable bytestream like RS232.
-
--- This implements "Go-Back-N ARQ".
+-- | Implementation of ARQ; http://en.wikipedia.org/wiki/Automatic_repeat_request "Stop-and-wait ARQ".
+-- Can be used to put a lightweight reliable link on top of an unreliable packet system, like UDP,
+-- or a unreliable bytestream system like RS232.
 
 module Foreign.LambdaBridge.ARQ 
 	( SessionId
 	, PacketId
-	, ChannelId
+	, BridgePort
 	, Data(..)
 	, Ack(..)
 	, Packet(..)
-	, ARQ_Options(..)
-	, ARQ_Protocol(..)
 	, arqProtocol
 	) where
 
@@ -28,18 +25,19 @@ import System.Random
 import System.IO
 import Data.Time.Clock
 
+import Foreign.LambdaBridge.Bridge
+
 -- 2 bit session id
 type SessionId = Word16
 type PacketId  = Word16
-type ChannelId = Word8		-- ^ one of 255 channels (=> 256 FIFOs), 0 is controller, 1 is the main fifo.
 
 -- | The data packet. It is always okay to fragment a packet, as long as the packets do not appear out of order.
 -- exception: The 0 (control) channel should not be fragmented.
 
 data Data = Data
-		PacketId	-- ^ the number of the packet
-		ChannelId	-- ^ which FIFO
-		BS.ByteString	-- ^ the data (strict bytestring, not lazy)
+		PacketId	-- the number of the packet
+		BridgePort	-- which FIFO
+		BS.ByteString	-- the data (strict bytestring, not lazy)
 	deriving (Show)
 	
 data Ack = Ack
@@ -75,9 +73,9 @@ instance Binary Packet where
 		    _ -> return $ BadPacket
 
 
-sendWaitingForAck :: PacketId -> IO (ChannelId,BS.ByteString) -> IO Ack -> (Packet -> IO ()) -> MVar (Maybe Double) -> MVar Int -> IO ()
+sendWaitingForAck :: PacketId -> IO (BridgePort,Link) -> IO Ack -> (Packet -> IO ()) -> MVar (Maybe Double) -> MVar Int -> IO ()
 sendWaitingForAck p_id takeToSendVar takeAck putSend timeoutVar timeoutTime = do
-	(chan,bs) <- takeToSendVar
+	(chan,Link bs) <- takeToSendVar
 	sendWaitingForAck' p_id (Data p_id chan bs) takeToSendVar takeAck putSend timeoutVar timeoutTime
 
 sendWaitingForAck' p_no p takeToSendVar takeAck putSend timeoutVar timeoutTime = do
@@ -107,7 +105,7 @@ sendWaitingForAck' p_no p takeToSendVar takeAck putSend timeoutVar timeoutTime =
 
 handleTimeouts :: MVar (Maybe Double) -> IO (MVar Int)
 handleTimeouts timings = do
-	let firstTime = 1 :: Double	-- 1 second max latency (0.5 each direction)
+	let firstTime = 1 / 1000 :: Double	-- 1 second max latency (0.5 each direction)
 	var <- newEmptyMVar
 	let loop avr = do
 		tryTakeMVar var
@@ -128,71 +126,61 @@ handleTimeouts timings = do
 	return var
 
 
-recvReplyWithAck :: PacketId -> IO Data -> (Packet -> IO ()) -> ((ChannelId,BS.ByteString) -> IO ()) -> IO ()
+recvReplyWithAck :: PacketId -> IO Data -> (Packet -> IO ()) -> ((BridgePort,Link) -> IO ()) -> IO ()
 recvReplyWithAck n takeRecvVar putSendVar putHaveRecvVar = do
 		p@(Data packId chanId bs) <- takeRecvVar
-		putSendVar (AckPacket $ Ack packId)	-- *always* send an awk
+		putSendVar (AckPacket $ Ack packId)	--   *always* send an awk
 		if packId == n then do
-			putHaveRecvVar (chanId,bs)
+			putHaveRecvVar (chanId,Link bs)
 			recvReplyWithAck (n + 1) takeRecvVar putSendVar putHaveRecvVar
 		     -- Otherwise, just ignore the (out of order) packet
 		     -- and eventually the client will resend (because there is no Ack)
 		     -- Todo: consider Nack		
 		  else do recvReplyWithAck n takeRecvVar putSendVar putHaveRecvVar
 
-sendBits :: [Bool] -> IO Packet -> (BS.ByteString -> IO ()) -> IO ()
-sendBits (True:errs) takeSendVar putSockVar = do
-	packet <- takeSendVar
-	sendBits errs takeSendVar putSockVar
-sendBits (False:errs) takeSendVar putSockVar = do
+sendBits :: IO Packet -> (Frame -> IO ()) -> IO ()
+sendBits takeSendVar putSockVar = do
 	packet <- takeSendVar
 	let bs = BS.concat $ LBS.toChunks $ encode packet
-	putSockVar bs
-	sendBits errs takeSendVar putSockVar
+	putSockVar (Frame bs)
+	sendBits takeSendVar putSockVar
 
-recvBits :: [Bool] -> IO BS.ByteString -> (Data -> IO ()) -> (Ack -> IO ()) -> IO ()
-recvBits (True:errs) takeRecv putRecvVar putAckVar = do
-	bs <- takeRecv
-	recvBits errs takeRecv putRecvVar putAckVar
-recvBits (False:errs) takeRecv putRecvVar putAckVar = do
-	bs <- takeRecv
+recvBits :: IO Frame -> (Data -> IO ()) -> (Ack -> IO ()) -> IO ()
+recvBits takeRecv putRecvVar putAckVar = do
+	Frame bs <- takeRecv
 	case decode (LBS.fromChunks [bs]) of
 	  	DataPacket dat -> do putRecvVar dat
 	  	AckPacket ack  -> do putAckVar ack
 	  	_ -> do return ()	-- ignore this packet
-	recvBits errs takeRecv putRecvVar putAckVar 
+	recvBits takeRecv putRecvVar putAckVar 
 
+{-
 data ARQ_Options = ARQ_Options
-	{ toSocket 	  :: BS.ByteString -> IO ()	-- 
-	, fromSocket 	  :: IO BS.ByteString
-	, transmitFailure :: Maybe Float
-	, receiveFailure  :: Maybe Float
+	{ toSocket 	  :: BS.ByteString -> IO ()	-- ^ trustworthy way of sending a bundle of bytes
+	, fromSocket 	  :: IO BS.ByteString		-- ^ a way of receiving a single bundle of bytes
+	, transmitFailure :: Maybe Float		-- ^ how often to (simulate) transmit failures
+	, receiveFailure  :: Maybe Float		-- ^ how often to (simulate) receive failures
+	, maxPacketSize   :: Int			-- ^ max size, in bytes, of packet *sent*.
 	}
 
 data ARQ_Protocol = ARQ_Protocol
-	{ sendByteString :: (ChannelId,BS.ByteString) -> IO ()
-	, recvByteString :: IO (ChannelId,BS.ByteString)
+	{ sendByteString :: (BridgePort,BS.ByteString) -> IO ()
+	, recvByteString :: IO (BridgePort,BS.ByteString)
 	}
+-}
 	
-arqProtocol :: ARQ_Options -> IO ARQ_Protocol
+arqProtocol :: Bridge () Frame -> IO (Bridge BridgePort Link)
 arqProtocol opts = do
-	seed <- getStdGen
-	let (s1,s2) = split seed
-	let sendFailures = case transmitFailure opts of
-		 	    Nothing -> repeat False
-			    Just f -> [ n < f | n <- randoms s1 ]
-	let recvFailures = case receiveFailure opts of
-		 	    Nothing -> repeat False
-			    Just f -> [ n < f | n <- randoms s2 ]
-	toSendVar <- newEmptyMVar :: IO (MVar (ChannelId,BS.ByteString))
+	toSendVar <- newEmptyMVar :: IO (MVar (BridgePort,Link))
 	sendVar <- newEmptyMVar :: IO (MVar Packet)
 	ackVar  <- newEmptyMVar :: IO (MVar Ack)
 	recvVar <- newEmptyMVar :: IO (MVar Data)
-	haveRecvVar <- newEmptyMVar :: IO (MVar (ChannelId,BS.ByteString))
+	haveRecvVar <- newEmptyMVar :: IO (MVar (BridgePort,Link))
 	timeoutVar <- newEmptyMVar :: IO (MVar (Maybe Double))
 	timeoutTime <- handleTimeouts timeoutVar
 
 		-- This waits for awk's when sending packets
+
 	forkIO $  sendWaitingForAck 0
 				(takeMVar toSendVar)
 				(takeMVar ackVar)
@@ -201,14 +189,14 @@ arqProtocol opts = do
 				timeoutTime
 
 		-- This connects the "sendVar" MVar with the outgoing connection.
-	forkIO $ sendBits sendFailures (takeMVar sendVar) (toSocket opts)
-		
+	forkIO $ sendBits (takeMVar sendVar) (toBridge opts ())
 
-		-- This send bits over the connection
-	forkIO $ recvBits recvFailures
-			     (fromSocket opts)
+
+		-- This receives bits over the connection
+	forkIO $ recvBits    (fromBridge opts ())
 			     (putMVar recvVar)
 			     (putMVar ackVar)
+
 
 		-- This sends acks
 	forkIO $ recvReplyWithAck 0 
@@ -216,8 +204,11 @@ arqProtocol opts = do
 				(putMVar sendVar) 
 				(putMVar haveRecvVar)
 
-	return $ ARQ_Protocol
-	  { sendByteString = \ (chanId,bs) -> putMVar toSendVar (chanId,bs)
-	  , recvByteString = takeMVar haveRecvVar
-	  }
 
+	return $ Bridge
+	  { toBridge = \ port link -> putMVar toSendVar (port,link)
+			-- TODO: add chunking to packet size
+	  , fromBridge = \ port -> do
+				(port,link) <- takeMVar haveRecvVar
+				return link
+	  }
