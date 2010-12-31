@@ -1,7 +1,7 @@
 
 -- | Support for providing a Frame-based API on top of an unreliable bytestream.
 
-module Foreign.LambdaBridge.Frame
+module Network.LambdaBridge.Frame
 --	( crc
 --	, maxFrameSize
 --	, frameProtocol
@@ -19,7 +19,7 @@ import Data.Char
 import Data.Default
 
 
-import Foreign.LambdaBridge.Bridge
+import Network.LambdaBridge.Bridge
 
 import System.Random
 import Debug.Trace

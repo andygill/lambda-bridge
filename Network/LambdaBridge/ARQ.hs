@@ -2,7 +2,7 @@
 -- Can be used to put a lightweight reliable link on top of an unreliable packet system, like UDP,
 -- or a unreliable bytestream system like RS232.
 
-module Foreign.LambdaBridge.ARQ 
+module Network.LambdaBridge.ARQ 
 {-	( SessionId
 	, PacketId
 	, BridgePort
@@ -26,7 +26,7 @@ import System.Random
 import System.IO
 import Data.Time.Clock
 
-import Foreign.LambdaBridge.Bridge
+import Network.LambdaBridge.Bridge
 
 {-
 -- 2 bit session id

@@ -1,6 +1,6 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 
-module Foreign.LambdaBridge (simple_board_connect, board_connect) where
+module Network.LambdaBridge (simple_board_connect, board_connect) where
 
 import Foreign.C
 import Foreign.Ptr

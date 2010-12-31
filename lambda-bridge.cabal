@@ -26,11 +26,11 @@ Flag example
 
 Library
   Build-Depends:   base >= 4 && < 5, binary, bytestring, random, time, data-default
-  Exposed-Modules:     Foreign.LambdaBridge
-                       Foreign.LambdaBridge.Service
-                       Foreign.LambdaBridge.ARQ
-                       Foreign.LambdaBridge.Bridge
-                       Foreign.LambdaBridge.Frame
+  Exposed-Modules:     Network.LambdaBridge
+                       Network.LambdaBridge.Service
+                       Network.LambdaBridge.ARQ
+                       Network.LambdaBridge.Bridge
+                       Network.LambdaBridge.Frame
 
   Hs-Source-Dirs:      .
   Extensions:          ForeignFunctionInterface
@@ -52,8 +52,6 @@ Executable udp_lbshell
    C-Sources:           connect/lb_board_connect.c
    Include-Dirs:        connect
    Main-Is: Main.hs
-
-
 
 -- And tests
 

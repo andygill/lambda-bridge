@@ -1,6 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 
-module Foreign.LambdaBridge.Bridge where
+module Network.LambdaBridge.Bridge where
 
 import Data.Word as W
 import qualified Data.ByteString as BS

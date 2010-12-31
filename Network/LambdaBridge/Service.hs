@@ -1,4 +1,4 @@
-module Foreign.LambdaBridge.Service (bridge_service) where
+module Network.LambdaBridge.Service (bridge_service) where
 
 import System.Environment
 import GHC.IO.Handle.FD

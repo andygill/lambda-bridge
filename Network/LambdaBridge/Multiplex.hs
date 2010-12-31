@@ -1,5 +1,5 @@
 
-module Foreign.LambdaBridge.Multiplex where
+module Network.LambdaBridge.Multiplex where
 	
 import Data.Word
 import Data.Binary
@@ -12,7 +12,7 @@ import Control.Concurrent.MVar
 import System.Random
 import System.IO
 
-import Foreign.LambdaBridge.Bridge
+import Network. LambdaBridge.Bridge
 
 multiplex :: Word8 -> Bridge Frame Frame -> IO [Bridge Frame Frame]
 multiplex n bridge = 
