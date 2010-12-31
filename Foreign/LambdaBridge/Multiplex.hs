@@ -12,6 +12,16 @@ import Control.Concurrent.MVar
 import System.Random
 import System.IO
 
-multiplex :: Bridge () Frame -> Bridge () Packet
+import Foreign.LambdaBridge.Bridge
 
+multiplex :: Word8 -> Bridge Frame Frame -> IO [Bridge Frame Frame]
+multiplex n bridge = 
+--	forkIO $ let pack <- 
+	return $ 
+	  [ Bridge 
+	  	{ toBridge = \ (Frame bs) -> toBridge bridge (Frame (BS.cons i bs))
+		, fromBridge = error ""
+		}
+	  | i <- take (fromIntegral n) [0..]
+	  ]
 

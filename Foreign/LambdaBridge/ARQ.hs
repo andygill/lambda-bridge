@@ -3,14 +3,15 @@
 -- or a unreliable bytestream system like RS232.
 
 module Foreign.LambdaBridge.ARQ 
-	( SessionId
+{-	( SessionId
 	, PacketId
 	, BridgePort
 	, Data(..)
 	, Ack(..)
 	, Packet(..)
 	, arqProtocol
-	) where
+	) where -}
+		where
 
 import Data.Word
 import Data.Binary
@@ -27,6 +28,7 @@ import Data.Time.Clock
 
 import Foreign.LambdaBridge.Bridge
 
+{-
 -- 2 bit session id
 type SessionId = Word16
 type PacketId  = Word16
@@ -212,3 +214,4 @@ arqProtocol opts = do
 				(port,link) <- takeMVar haveRecvVar
 				return link
 	  }
+-}

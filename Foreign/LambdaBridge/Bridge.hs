@@ -13,34 +13,27 @@ import Numeric
 -- | A 'Bridge' is a bidirectional connection to a specific remote API.
 -- There are many different types of Bridges in the lambda-bridge API.
 
-data Bridge port a = Bridge 
-	{ toBridge 	:: port -> a -> IO ()	-- ^ write to a bridge; may block; called many times.
-	, fromBridge	:: port -> IO a		-- ^ read from a bridge; may block, called many times.
+data Bridge msg resp = Bridge 
+	{ toBridge 	:: msg -> IO ()	-- ^ write to a bridge; may block; called many times.
+	, fromBridge	:: IO resp	-- ^ read from a bridge; may block, called many times.
 	}
-
-{-
--- | A 
-data Pipe msg resp = Bridge 
-	{ toBridge 	:: port -> a -> IO ()	-- ^ write to a bridge; may block; called many times.
-	, fromBridge	:: port -> IO a		-- ^ read from a bridge; may block, called many times.
-	}
--}
 
 -- | A 'BridgePort' is the port number of a remote FIFO/pipe,
 -- where  0 is (reserved) controller, 1 is the main fifo.
 
 type BridgePort = Word8
 
--- | A 'Bridge (of) () Byte' is for talking one byte at a time, where the
+-- | A 'Bridge (of) Byte Byte' is for talking one byte at a time, where the
 -- byte may or may not get there, and may get garbled.
 --
--- An example of a 'Bridge (of) Byte' is a RS-232 link.
+-- An example of a 'Bridge (of) Byte Byte' is a RS-232 link.
 
 newtype Byte = Byte W.Word8 deriving (Eq,Ord)
 
 instance Show Byte where
    show (Byte w) = "0x" ++ showHex w ""
 
+{-
 -- | A 'RegisterAddr' is used for the LAD bus to give the address of a remote register.
 type RegisterAddr = Word32
 
@@ -52,16 +45,18 @@ newtype Register = Register W.Word32 deriving (Eq,Ord)
 
 instance Show Register where
    show (Register w) = "0x" ++ showHex w ""
+-}
 
--- | A 'Bridge (of) () Frame' is small set of bytes, where a Frame may
+-- | A 'Bridge (of) Frame Frame' is small set of bytes, where a Frame may
 -- or may not get to the destiation, but if receieved, will 
 -- not be garbled, and will not be fragmented.
 -- There is typically an implementation specific maximum size of a Frame.
 
--- An example of a 'Bridge (of) Frame' is UDP.
+-- An example of a 'Bridge (of) Frame Frame' is UDP.
 
-newtype Frame = Frame BS.ByteString
+newtype Frame = Frame BS.ByteString deriving (Show)
 
+{-
 -- | A 'Bridge (of) BridgePort Link' is an arbitary sized sequence of bytes,
 -- that will be send to specific FIFO/pipe location at the destination,
 -- without garble, and the protocol will keep trying until the payload
@@ -72,14 +67,37 @@ newtype Frame = Frame BS.ByteString
 -- so other writes to other ports need to succeed.
 
 data Link = Link BS.ByteString
+-}
 
 -- | ''unreliableBridge'' is a way of making a 'Bridge' less
 -- reliable, for testing purposes.
-unreliableBridge :: Unreliable a -> Unreliable a -> Bridge p a -> IO (Bridge p a)
-unreliableBridge send recv sock = return $ Bridge
-	{ toBridge = toBridge sock
-	, fromBridge = fromBridge sock
-	}
+unreliableBridge :: Unreliable msg -> Unreliable resp -> Bridge msg resp -> IO (Bridge msg resp)
+unreliableBridge send recv sock = do
+	let you :: Float -> IO Bool
+	    you f = do
+		r <- randomIO
+		return $ f > r
+
+	let optMangle f mangle a = do
+		b <- you f
+		if b then do
+			g <- newStdGen
+			return $ mangle g a
+		     else return a 
+
+  	return $ Bridge
+	  { toBridge = \ a -> do
+		b <- you (loseU send)
+		if b then return () else do -- ignore if you "lose" the message.
+		  a <- optMangle (mangleU send) (mangler send) a
+		  b <- you (dupU send)
+		  if b then do		   -- send twice, please
+		  	toBridge sock a			
+		  	toBridge sock a			
+		       else do
+	                toBridge sock a
+	  , fromBridge = fromBridge sock
+	  }
 
 -- |  ''Unreliable'' is the configuration for ''unreliableBridge''.
 data Unreliable a = Unreliable
@@ -97,33 +115,32 @@ instance Default (Unreliable a) where
 -- | 'debugBridge' outputs to the stderr debugging messages
 -- about what datum is getting send where.
 
-debugBridge :: (Show p) => (a -> String) -> Bridge p a -> IO (Bridge p a)
-debugBridge theShow bridge = do
+debugBridge :: (Show msg, Show resp) => Bridge msg resp -> IO (Bridge msg resp)
+debugBridge bridge = do
 	sendCounter <- newMVar 0
 	recvCounter <- newMVar 0
 
 	return $ Bridge
-		{ toBridge = \ p a -> do
+		{ toBridge = \ a -> do
 			count <- takeMVar sendCounter
 			putMVar sendCounter (succ count)
-			putStrLn $ "toBridge<" ++ show count ++ "> (" ++ theShow a ++ "=>" ++ show p ++")"
-			() <- toBridge bridge p a
-			putStrLn $ "toBridge<" ++ show count ++ "> success (" ++ show p ++ ")"
-		, fromBridge = \ p -> do
+			putStrLn $ "toBridge<" ++ show count ++ "> (" ++ show a ++ ")"
+			() <- toBridge bridge a
+			putStrLn $ "toBridge<" ++ show count ++ "> success"
+		, fromBridge = do
 			count <- takeMVar recvCounter
 			putMVar recvCounter (succ count)
-			putStrLn $ "fromBridge<" ++ show count ++ "> (" ++ show p ++")"
-			a <- fromBridge bridge p
-			putStrLn $ "fromBridge<" ++ show count ++ "> (" ++ theShow a ++ "<=" ++ show p ++")"
+			putStrLn $ "fromBridge<" ++ show count ++ ">"
+			a <- fromBridge bridge
+			putStrLn $ "fromBridge<" ++ show count ++ "> (" ++ show a ++ ")"
 			return a
 		}
 
-nullBridge :: IO (Bridge () a)
-nullBridge = do
+
+loopbackBridge :: IO (Bridge a a)
+loopbackBridge = do
 	var <- newEmptyMVar
 	return $ Bridge
-		{ toBridge = \ () a -> putMVar var a
-		, fromBridge = \ () -> takeMVar var
+		{ toBridge = putMVar var
+		, fromBridge = takeMVar var
 		}
-		
-	

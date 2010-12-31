@@ -2,20 +2,27 @@
 -- | Support for providing a Frame-based API on top of an unreliable bytestream.
 
 module Foreign.LambdaBridge.Frame
-	( crc
-	, maxFrameSize
-	, frameProtocol
-	) where
+--	( crc
+--	, maxFrameSize
+--	, frameProtocol
+--	) where
+	where
 
 import Data.Word
 import Data.Bits
 import Control.Concurrent
 import Control.Concurrent.MVar
 import qualified Data.ByteString as BS
+import System.Timeout 
+import Numeric
+import Data.Char
+import Data.Default
+
 
 import Foreign.LambdaBridge.Bridge
 
-import Numeric
+import System.Random
+import Debug.Trace
 
 {-
 
@@ -55,15 +62,13 @@ crc code start bs = foldl (\ crc b ->
 			    ] 
 			  | b <- bs
 			  ]
---   where
---	code = 0x1021 -- 0x8408
 
 -- | The maximum frame payload size, not including CRC.
 maxFrameSize :: Int
 maxFrameSize = 238
 
 -- This attempts all possible headers, and checks to see if there are any 
--- 0xf1's (the tag) appearing in the size or checksum.
+-- 0xf1's (the tag) appearing in the size or checksum. Not exported.
 
 sanityCheck = 
 	[
@@ -82,26 +87,22 @@ sanityCheck =
 	tag = 0xf1
 
 -----------------------------------------------------------------------
--- | 'frameProtocol' provides a Bridge Frame from the services of a 'Bridge Byte'. (stub, for now.)
+-- | 'frameProtocol' provides a Bridge Frame Frame from the services of a 'Bridge Byte Byte'.
 -- It is thread safe (two Frame writes to the same bridge will not garble each other)
 
-frameProtocol :: Bridge () Byte -> IO (Bridge () Frame)
-frameProtocol byte_bridge = do
+frameProtocol :: Double -> Bridge Byte Byte -> IO (Bridge Frame Frame)
+frameProtocol tmOut byte_bridge = do
+
+	-----------------------------------------------------------------------------
 	sending <- newEmptyMVar
 
-	let write wd = toBridge byte_bridge () (Byte wd)
-	let read = do Byte wd <- fromBridge byte_bridge ()
-		      return wd
-	
+	let write wd = toBridge byte_bridge (Byte wd)
+
 	let writeWithCRC xs = do
 		sequence_ [ write x | x <- xs ]
 		let crc_val = crc (0x1021 :: Word16) 0xffff (xs ++ [0,0])
 		write (fromIntegral (crc_val `div` 256))
 		write (fromIntegral (crc_val `mod` 256))
-
---	let checkCRC xs = do
-		
-
 
 	let sender = do
 		bs <- takeMVar sending
@@ -112,26 +113,76 @@ frameProtocol byte_bridge = do
 		sender
 		
 	forkIO $ sender
-{-
+
+	-----------------------------------------------------------------------------
+	let tag = 0xf1 :: Word8
+
+	recving <- newEmptyMVar
+
+	-- TODO: these three defs can be folded
+	let read = do Byte wd <- fromBridge byte_bridge
+		      return wd
+
+	    -- timeout in microseconds
+	let tmOut' :: Int
+	    tmOut' = floor (tmOut * 1000 * 1000)
+
+	let step = do
+		wd' <- timeout tmOut' read 
+		case wd' of
+		  Nothing -> fail ("step timed out")
+		  Just wd -> return wd
+	
+	let checkCRC xs = crc (0x1021 :: Word16) 0xffff xs == 0 
+
 	let findHeader :: IO ()
 	    findHeader = do
-		wd <- read
-		if wd == 
--}
-{-
-	forkIO $ fromBridge byte_bridge $ \ a -> do
---		print a
-		return True
--}
+		wd0 <- step
+		wd1 <- step
+		wd2 <- step
+		wd3 <- step
+		findHeader' wd0 wd1 wd2 wd3
+		
+	    -- you already have the first byte
+	    findHeader' :: Word8 -> Word8 -> Word8 -> Word8 -> IO ()
+	    findHeader' wd0 wd1 wd2 wd3 
+		| wd0 == 0xf1 && wd1 == 0 && trace "0xf1" False = undefined
+		| wd0 == 0xf1
+		  && fromIntegral wd1 <= maxFrameSize 
+		  && checkCRC [wd0,wd1,wd2,wd3] = findPayload (fromIntegral wd1)
+		| otherwise = do
+			wd4 <- step
+	    		findHeader' wd1 wd2 wd3 wd4
 
-	let recvFrame = return undefined
+	    findPayload :: Int -> IO ()
+	    findPayload sz = do
+		print sz
+
+		-- TODO: consider byte stuffing for 0xf1
+		xs <- sequence [ step
+			       | i <- [1..(sz + 2)]
+			       ]
+--		print xs
+		if checkCRC xs then putMVar recving (Frame (BS.pack (take sz xs)))
+			       else return ()
+--		print xs
+		return ()
+
+	let readBridge = do
+		findHeader `catch` \ msg -> do
+--					print msg
+					return ()
+		readBridge
+
+
+	forkIO $ readBridge
 
 	return $ Bridge 
-		{ toBridge = \ () (Frame bs) ->
+		{ toBridge = \ (Frame bs) ->
 			if BS.length bs > maxFrameSize
 			then fail "packet exceeded max frame size"
 			else putMVar sending bs
-		, fromBridge = \ () -> recvFrame
+		, fromBridge = takeMVar recving
 		}
 
 
@@ -154,19 +205,30 @@ showH x = "0x" ++ showHex x ""
 
 main :: IO ()
 main = do
-	bridge_byte <- nullBridge
+	bridge_byte <- loopbackBridge
 	
-	forkIO $ let loop = do
-			_ <- fromBridge bridge_byte ()
-			loop
-		 in loop
-
-	bridge_byte' <- debugBridge (\ (Byte w) -> showH w) bridge_byte
+--	bridge_byte' <- debugBridge bridge_byte
+	let u = def { loseU = 0.001, dupU = 0.000, mangleU = 10.001, mangler = \ g (Byte a) -> 
+									let (a',_) = random g
+									in Byte (fromIntegral (a' :: Int) + a) }
+	bridge_byte' <- unreliableBridge u def bridge_byte
 
 --	sequence_ [ toBridge bridge_byte' x | x <- [0..255]]
 
-	bridge_frame <- frameProtocol bridge_byte'
+	bridge_frame <- frameProtocol 0.0001 bridge_byte'
 
-	toBridge bridge_frame () $ Frame (BS.pack [49..57])
+	forkIO $ do
+		sequence [ toBridge bridge_frame $ Frame (toStr $ "Frame: " ++ show i ++ " " ++ ['a'..'z'] ++ [chr 0xf1])
+			 | i <- [1..]
+			 ]
+		return ()
+		
+	sequence [ do
+		frame <- fromBridge bridge_frame
+		print frame
+			| _ <- [0..1000]]
 
 	return ()
+
+toStr :: String -> BS.ByteString
+toStr = BS.pack . map (fromIntegral . ord)
