@@ -136,11 +136,19 @@ debugBridge bridge = do
 			return a
 		}
 
+-- | 'loopbackBridge' is a simple reflective loopback. It obeys the basic
+-- permise of a bridge; if no-one is listening, then data can get lost.
+-- It is in the nature of the bridge; things do not always make it.
 
 loopbackBridge :: IO (Bridge a a)
 loopbackBridge = do
-	var <- newEmptyMVar
+	ready <- newEmptyMVar	-- if full, then this is the var someone is waiting on
 	return $ Bridge
-		{ toBridge = putMVar var
-		, fromBridge = takeMVar var
+		{ toBridge = \ a -> do
+			var <- takeMVar ready
+			putMVar var a
+		, fromBridge = do
+			var <- newEmptyMVar
+			putMVar ready var
+			takeMVar var
 		}
