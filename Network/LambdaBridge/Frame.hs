@@ -92,14 +92,17 @@ sanityCheck =
 
 frameProtocol :: Double -> Bridge Byte Byte -> IO (Bridge Frame Frame)
 frameProtocol tmOut byte_bridge = do
+	let tag = 0xf1 :: Word8
 
 	-----------------------------------------------------------------------------
 	sending <- newEmptyMVar
 
 	let write wd = toBridge byte_bridge (Byte wd)
 
-	let writeWithCRC xs = do
-		sequence_ [ write x | x <- xs ]
+	let writeWithCRC stuffing xs = do
+		sequence_ [ do write x
+			       if x == tag && stuffing then write 0xff else return ()
+			  | x <- xs ]
 		let crc_val = crc (0x1021 :: Word16) 0xffff (xs ++ [0,0])
 		write (fromIntegral (crc_val `div` 256))
 		write (fromIntegral (crc_val `mod` 256))
@@ -107,15 +110,14 @@ frameProtocol tmOut byte_bridge = do
 	let sender = do
 		bs <- takeMVar sending
 		let hdr :: [Word8]
-		    hdr = [0xf1,fromIntegral $ BS.length bs]
-		writeWithCRC hdr
-		writeWithCRC (BS.unpack bs)
+		    hdr = [tag,fromIntegral $ BS.length bs]
+		writeWithCRC False hdr
+		writeWithCRC True (BS.unpack bs)
 		sender
 		
 	forkIO $ sender
 
 	-----------------------------------------------------------------------------
-	let tag = 0xf1 :: Word8
 
 	recving <- newEmptyMVar
 
@@ -146,7 +148,7 @@ frameProtocol tmOut byte_bridge = do
 	    -- you already have the first byte
 	    findHeader' :: Word8 -> Word8 -> Word8 -> Word8 -> IO ()
 	    findHeader' wd0 wd1 wd2 wd3 
-		| wd0 == 0xf1 && wd1 == 0 && trace "0xf1" False = undefined
+--		| wd0 == 0xf1 && wd1 == 0 && trace "0xf1" False = undefined
 		| wd0 == 0xf1
 		  && fromIntegral wd1 <= maxFrameSize 
 		  && checkCRC [wd0,wd1,wd2,wd3] = findPayload (fromIntegral wd1)
@@ -154,14 +156,27 @@ frameProtocol tmOut byte_bridge = do
 			wd4 <- step
 	    		findHeader' wd1 wd2 wd3 wd4
 
+	    readWithPadding :: IO Word8
+	    readWithPadding = do
+		wd1 <- read
+
+		if wd1 == tag then 
+			do wd2 <- read
+			   if wd2 == 0xff then return wd1 else do
+				wd3 <- read
+				wd4 <- read
+				findHeader' wd1 wd2 wd3 wd4
+				fail "trampoline (to clear stack)"
+		    else do
+			return wd1
+
 	    findPayload :: Int -> IO ()
 	    findPayload sz = do
-		print sz
 
 		-- TODO: consider byte stuffing for 0xf1
-		xs <- sequence [ step
-			       | i <- [1..(sz + 2)]
-			       ]
+		xs <- sequence  [ readWithPadding
+		 		| i <- [1..(sz + 2)]
+				]
 --		print xs
 		if checkCRC xs then putMVar recving (Frame (BS.pack (take sz xs)))
 			       else return ()
@@ -208,14 +223,14 @@ main = do
 	bridge_byte <- loopbackBridge
 	
 --	bridge_byte' <- debugBridge bridge_byte
-	let u = def { loseU = 0.001, dupU = 0.000, mangleU = 10.001, mangler = \ g (Byte a) -> 
+	let u = def { loseU = 0.01, dupU = 0.01, mangleU = 0.01, mangler = \ g (Byte a) -> 
 									let (a',_) = random g
 									in Byte (fromIntegral (a' :: Int) + a) }
 	bridge_byte' <- unreliableBridge u def bridge_byte
 
 --	sequence_ [ toBridge bridge_byte' x | x <- [0..255]]
 
-	bridge_frame <- frameProtocol 0.0001 bridge_byte'
+	bridge_frame <- frameProtocol 0.01 bridge_byte'
 
 	forkIO $ do
 		sequence [ toBridge bridge_frame $ Frame (toStr $ "Frame: " ++ show i ++ " " ++ ['a'..'z'] ++ [chr 0xf1])
@@ -226,7 +241,7 @@ main = do
 	sequence [ do
 		frame <- fromBridge bridge_frame
 		print frame
-			| _ <- [0..1000]]
+			| _ <- [1..1000]]
 
 	return ()
 
