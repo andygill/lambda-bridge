@@ -40,14 +40,14 @@ Library
 -- Now the bridges.
 
 Executable lb_udp
-   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time
+   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default
    Hs-Source-Dirs: 	.  bridges/udp
    Main-Is: Main.hs
 
 -- And the runners
 
 Executable udp_lbshell
-   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time
+   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default
    Hs-Source-Dirs: 	.  runners/udp_lbshell
    C-Sources:           connect/lb_board_connect.c
    Include-Dirs:        connect
@@ -56,21 +56,21 @@ Executable udp_lbshell
 -- And tests
 
 Executable haskell-test1
-   Build-Depends: 	base >= 4 && < 5, random, time
+   Build-Depends: 	base >= 4 && < 5, random, time, data-default
    Hs-Source-Dirs: 	.  examples/haskell-test1
    C-Sources:           connect/lb_board_connect.c
    Include-Dirs:        connect
    Main-Is: Main.hs
 
 Executable haskell-test2
-   Build-Depends: 	base >= 4 && < 5, random, time
+   Build-Depends: 	base >= 4 && < 5, random, time, data-default
    Hs-Source-Dirs: 	.  examples/haskell-test2
    C-Sources:           connect/lb_board_connect.c
    Include-Dirs:        connect
    Main-Is: Main.hs
 
 Executable haskell-test3
-   Build-Depends: 	base >= 4 && < 5, binary, bytestring, random, time
+   Build-Depends: 	base >= 4 && < 5, binary, bytestring, random, time, data-default
    Hs-Source-Dirs: 	.  examples/haskell-test3
    C-Sources:           connect/lb_board_connect.c
    Include-Dirs:        connect

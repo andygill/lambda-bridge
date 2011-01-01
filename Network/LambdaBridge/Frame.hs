@@ -220,20 +220,20 @@ showH x = "0x" ++ showHex x ""
 
 main :: IO ()
 main = do
-	bridge_byte <- loopbackBridge
+	bridge_byte0 <- loopbackBridge
 	
---	bridge_byte' <- debugBridge bridge_byte
+	bridge_byte1 <- debugBridge bridge_byte0
 	let u = def { loseU = 0.01, dupU = 0.01, mangleU = 0.01, mangler = \ g (Byte a) -> 
 									let (a',_) = random g
 									in Byte (fromIntegral (a' :: Int) + a) }
-	bridge_byte' <- unreliableBridge u def bridge_byte
+	bridge_byte2 <- unreliableBridge def def bridge_byte0
 
 --	sequence_ [ toBridge bridge_byte' x | x <- [0..255]]
 
-	bridge_frame <- frameProtocol 0.01 bridge_byte'
+	bridge_frame <- frameProtocol 0.01 bridge_byte2
 
 	forkIO $ do
-		sequence [ toBridge bridge_frame $ Frame (toStr $ "Frame: " ++ show i ++ " " ++ ['a'..'z'] ++ [chr 0xf1])
+		sequence [ toBridge bridge_frame $ Frame (toStr $ "Frame: " ++ show i ++ " " ++ [' '..'~'] ++ [chr 0xf1])
 			 | i <- [1..]
 			 ]
 		return ()

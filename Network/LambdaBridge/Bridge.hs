@@ -147,6 +147,14 @@ loopbackBridge = do
 		{ toBridge = \ a -> do
 			var <- takeMVar ready
 			putMVar var a
+{-
+			var' <- tryTakeMVar ready
+			case var' of
+			  Just var -> putMVar var a
+			  Nothing  -> do
+				print "DROP"
+				return ()
+-}
 		, fromBridge = do
 			var <- newEmptyMVar
 			putMVar ready var

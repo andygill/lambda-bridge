@@ -1,9 +1,23 @@
 Lambda bridge is a generic bridge from Haskell (on a CPU) to VHDL on a FPGA.
 
-In order to use the lambda bridge, you need to set the PATH environment variable, 
-to find the bridges
+Directory Structure
 
-For example
+ * Network -- the Haskell source
+   * Network/LambdaBridge/*.hs -- generic Haskell "network" code for building lambda bridges.
+
+ * bridges -- A bridge is a lambda-bridge device driver, in user-space. They are implemented
+   as stand alone user processes that are invoked from the [lb_]board_connect function
+   in C or Haskell. By convention, the lambda-bridge bridge binaries start with lb_.
+
+ * connect -- C implementation of lb_board_connect.
+ 
+ * examples -- Examples of using some generic/toy bridges.
+
+ * runners -- programs/applications that *use* the lambda-bridge
+    * udp_lbshell -- Allows the remote invocation of lambda-bridge commands.
+
+In order to use the lambda bridge, you need to set the PATH environment variable, 
+to find the bridges. For example
 
 % export PATH=$PATH:`pwd`/bridges/bin
 or
@@ -14,7 +28,6 @@ If you type
 % make bridges
 
 Then the package will attempt to build the bridges (and put them in to bridges/bin)
-
 
 
 

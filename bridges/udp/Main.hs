@@ -19,8 +19,8 @@ import System.Random
 
 import Prelude hiding (getContents)
 
-import Foreign.LambdaBridge.Service
-import Foreign.LambdaBridge.ARQ
+import Network.LambdaBridge.Service
+import Network.LambdaBridge.ARQ
 
 -- This Bridge service uses UDP to send and recieve requests,
 -- over (default) port 9237.
@@ -29,7 +29,9 @@ import Foreign.LambdaBridge.ARQ
 
 data SessionHandle = SessionHandle Socket SockAddr
 
-main = bridge_service $ \ args sends recvs -> do
+main = bridge_service $ \ args sends recvs -> do return ()
+{-
+	
 	hPutStrLn stderr "Remote Service:"
 	case (args,sends,recvs) of
 	  (remote_cmd:hostname:port:style:rest,[s],[r]) -> do
@@ -75,3 +77,4 @@ main = bridge_service $ \ args sends recvs -> do
 			loop
 		
 		loop
+-}

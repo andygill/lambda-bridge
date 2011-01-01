@@ -19,10 +19,11 @@ import System.Environment
 
 import Prelude hiding (getContents)
 
-import Foreign.LambdaBridge
-import Foreign.LambdaBridge.ARQ
+import Network.LambdaBridge
+import Network.LambdaBridge.ARQ
 
-main = do
+main = do return ()
+{-
 	args <- getArgs
 	putStrLn $ "Seting up to a udp-shell lambda bridge using " ++ show args 
 	let (port:style:_) = args
@@ -93,4 +94,4 @@ main = do
 		loop 
 
 	loop
-
+-}

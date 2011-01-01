@@ -7,7 +7,7 @@
 
 module Main where
 
-import Foreign.LambdaBridge
+import Network.LambdaBridge
 import System.IO
 import Control.Concurrent
 

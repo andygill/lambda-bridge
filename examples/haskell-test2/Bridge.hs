@@ -1,6 +1,6 @@
 module Main where
 	
-import Foreign.LambdaBridge.Service
+import Network.LambdaBridge.Service
 import System.IO
 import Data.Char (toUpper)
 
