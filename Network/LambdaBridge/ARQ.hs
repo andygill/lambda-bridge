@@ -18,6 +18,7 @@ import Data.Binary
 import Data.Binary.Get as Get
 import Data.Binary.Put as Put
 import qualified Data.ByteString.Lazy as LBS
+import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Control.Concurrent
 import Control.Concurrent.MVar
@@ -28,7 +29,7 @@ import Data.Time.Clock
 
 import Network.LambdaBridge.Bridge
 
-{-
+
 -- 2 bit session id
 type SessionId = Word16
 type PacketId  = Word16
@@ -38,7 +39,6 @@ type PacketId  = Word16
 
 data Data = Data
 		PacketId	-- the number of the packet
-		BridgePort	-- which FIFO
 		BS.ByteString	-- the data (strict bytestring, not lazy)
 	deriving (Show)
 	
@@ -53,10 +53,9 @@ data Packet
 	deriving (Show)
 
 instance Binary Packet where
-	put (DataPacket (Data packId chanId bs)) = do
+	put (DataPacket (Data packId bs)) = do
 		putWord8 0x80
 		put packId
-		put chanId
 		put (fromIntegral (BS.length bs) :: Word16)
 		putByteString bs
 	put (AckPacket (Ack packId)) = do
@@ -66,19 +65,18 @@ instance Binary Packet where
 	get = do tag <- getWord8
 		 case tag :: Word8 of
 		    0x80 -> do packId <- get
-			       chanId <- get
 			       sz <- get :: Get.Get Word16
 			       bs <- Get.getByteString (fromIntegral sz)
-			       return $ DataPacket $ Data packId chanId bs
+			       return $ DataPacket $ Data packId bs
 		    0xa0 -> do packId <- get
 			       return $ AckPacket $ Ack packId
 		    _ -> return $ BadPacket
 
 
-sendWaitingForAck :: PacketId -> IO (BridgePort,Link) -> IO Ack -> (Packet -> IO ()) -> MVar (Maybe Double) -> MVar Int -> IO ()
+sendWaitingForAck :: PacketId -> IO (ByteString) -> IO Ack -> (Packet -> IO ()) -> MVar (Maybe Double) -> MVar Int -> IO ()
 sendWaitingForAck p_id takeToSendVar takeAck putSend timeoutVar timeoutTime = do
-	(chan,Link bs) <- takeToSendVar
-	sendWaitingForAck' p_id (Data p_id chan bs) takeToSendVar takeAck putSend timeoutVar timeoutTime
+	bs <- takeToSendVar
+	sendWaitingForAck' p_id (Data p_id bs) takeToSendVar takeAck putSend timeoutVar timeoutTime
 
 sendWaitingForAck' p_no p takeToSendVar takeAck putSend timeoutVar timeoutTime = do
 	-- send the packet
@@ -127,13 +125,12 @@ handleTimeouts timings = do
 	forkIO $ loop firstTime
 	return var
 
-
-recvReplyWithAck :: PacketId -> IO Data -> (Packet -> IO ()) -> ((BridgePort,Link) -> IO ()) -> IO ()
+recvReplyWithAck :: PacketId -> IO Data -> (Packet -> IO ()) -> (ByteString -> IO ()) -> IO ()
 recvReplyWithAck n takeRecvVar putSendVar putHaveRecvVar = do
-		p@(Data packId chanId bs) <- takeRecvVar
+		p@(Data packId bs) <- takeRecvVar
 		putSendVar (AckPacket $ Ack packId)	--   *always* send an awk
 		if packId == n then do
-			putHaveRecvVar (chanId,Link bs)
+			putHaveRecvVar bs
 			recvReplyWithAck (n + 1) takeRecvVar putSendVar putHaveRecvVar
 		     -- Otherwise, just ignore the (out of order) packet
 		     -- and eventually the client will resend (because there is no Ack)
@@ -155,22 +152,8 @@ recvBits takeRecv putRecvVar putAckVar = do
 	  	AckPacket ack  -> do putAckVar ack
 	  	_ -> do return ()	-- ignore this packet
 	recvBits takeRecv putRecvVar putAckVar 
-
 {-
-data ARQ_Options = ARQ_Options
-	{ toSocket 	  :: BS.ByteString -> IO ()	-- ^ trustworthy way of sending a bundle of bytes
-	, fromSocket 	  :: IO BS.ByteString		-- ^ a way of receiving a single bundle of bytes
-	, transmitFailure :: Maybe Float		-- ^ how often to (simulate) transmit failures
-	, receiveFailure  :: Maybe Float		-- ^ how often to (simulate) receive failures
-	, maxPacketSize   :: Int			-- ^ max size, in bytes, of packet *sent*.
-	}
 
-data ARQ_Protocol = ARQ_Protocol
-	{ sendByteString :: (BridgePort,BS.ByteString) -> IO ()
-	, recvByteString :: IO (BridgePort,BS.ByteString)
-	}
--}
-	
 arqProtocol :: Bridge () Frame -> IO (Bridge BridgePort Link)
 arqProtocol opts = do
 	toSendVar <- newEmptyMVar :: IO (MVar (BridgePort,Link))
@@ -183,12 +166,6 @@ arqProtocol opts = do
 
 		-- This waits for awk's when sending packets
 
-	forkIO $  sendWaitingForAck 0
-				(takeMVar toSendVar)
-				(takeMVar ackVar)
-				(putMVar sendVar)
-				timeoutVar
-				timeoutTime
 
 		-- This connects the "sendVar" MVar with the outgoing connection.
 	forkIO $ sendBits (takeMVar sendVar) (toBridge opts ())
@@ -215,3 +192,46 @@ arqProtocol opts = do
 				return link
 	  }
 -}
+
+sendWithARQ :: Bridge Frame -> IO (BS.ByteString -> IO ())
+sendWithARQ bridge = do
+	toSendVar   <- newEmptyMVar :: IO (MVar ByteString)
+	sendVar     <- newEmptyMVar :: IO (MVar Packet)
+	ackVar      <- newEmptyMVar :: IO (MVar Ack)
+	timeoutVar  <- newEmptyMVar :: IO (MVar (Maybe Double))
+	timeoutTime <- handleTimeouts timeoutVar
+	
+	-- This waits for awk's when sending packets
+	forkIO $ sendWaitingForAck 0
+				(takeMVar toSendVar)
+				(takeMVar ackVar)
+				(putMVar sendVar)
+				timeoutVar
+				timeoutTime
+
+	-- This connects the "sendVar" MVar with the outgoing connection.
+	forkIO $ sendBits (takeMVar sendVar) (toBridge bridge)
+
+	return $ putMVar toSendVar 
+
+recvWithARQ :: Bridge Frame -> IO (IO BS.ByteString)
+recvWithARQ bridge = do
+	recvVar     <- newEmptyMVar :: IO (MVar Data)
+	sendVar     <- newEmptyMVar :: IO (MVar Packet)
+	haveRecvVar <- newEmptyMVar :: IO (MVar ByteString)
+	ackVar      <- newEmptyMVar :: IO (MVar Ack)		-- no longer needed
+
+		-- This receives bits over the connection
+	forkIO $ recvBits    (fromBridge bridge)
+			     (putMVar recvVar)
+			     (putMVar ackVar)
+
+
+		-- This sends acks
+	forkIO $ recvReplyWithAck 0 
+				(takeMVar recvVar) 
+				(putMVar sendVar) 
+				(putMVar haveRecvVar)
+
+	return $ takeMVar haveRecvVar
+	
