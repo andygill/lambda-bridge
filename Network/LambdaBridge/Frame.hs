@@ -90,7 +90,7 @@ sanityCheck =
 -- | 'frameProtocol' provides a Bridge Frame Frame from the services of a 'Bridge Byte Byte'.
 -- It is thread safe (two Frame writes to the same bridge will not garble each other)
 
-frameProtocol :: Double -> Bridge Byte Byte -> IO (Bridge Frame Frame)
+frameProtocol :: Double -> Bridge Byte -> IO (Bridge Frame)
 frameProtocol tmOut byte_bridge = do
 	let tag = 0xf1 :: Word8
 

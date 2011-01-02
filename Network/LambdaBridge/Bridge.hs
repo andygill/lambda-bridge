@@ -13,9 +13,9 @@ import Numeric
 -- | A 'Bridge' is a bidirectional connection to a specific remote API.
 -- There are many different types of Bridges in the lambda-bridge API.
 
-data Bridge msg resp = Bridge 
+data Bridge msg = Bridge 
 	{ toBridge 	:: msg -> IO ()	-- ^ write to a bridge; may block; called many times.
-	, fromBridge	:: IO resp	-- ^ read from a bridge; may block, called many times.
+	, fromBridge	:: IO msg	-- ^ read from a bridge; may block, called many times.
 	}
 
 -- | A 'BridgePort' is the port number of a remote FIFO/pipe,
@@ -23,7 +23,7 @@ data Bridge msg resp = Bridge
 
 type BridgePort = Word8
 
--- | A 'Bridge (of) Byte Byte' is for talking one byte at a time, where the
+-- | A 'Bridge (of) Byte' is for talking one byte at a time, where the
 -- byte may or may not get there, and may get garbled.
 --
 -- An example of a 'Bridge (of) Byte Byte' is a RS-232 link.
@@ -47,9 +47,9 @@ instance Show Register where
    show (Register w) = "0x" ++ showHex w ""
 -}
 
--- | A 'Bridge (of) Frame Frame' is small set of bytes, where a Frame may
+-- | A 'Bridge (of) Frame' is small set of bytes, where a Frame may
 -- or may not get to the destiation, but if receieved, will 
--- not be garbled, and will not be fragmented.
+-- not be garbled or fragmented (via CRC or equiv).
 -- There is typically an implementation specific maximum size of a Frame.
 
 -- An example of a 'Bridge (of) Frame Frame' is UDP.
@@ -71,7 +71,7 @@ data Link = Link BS.ByteString
 
 -- | ''unreliableBridge'' is a way of making a 'Bridge' less
 -- reliable, for testing purposes.
-unreliableBridge :: Unreliable msg -> Unreliable resp -> Bridge msg resp -> IO (Bridge msg resp)
+unreliableBridge :: Unreliable msg -> Unreliable msg -> Bridge msg -> IO (Bridge msg)
 unreliableBridge send recv sock = do
 	let you :: Float -> IO Bool
 	    you f = do
@@ -115,7 +115,7 @@ instance Default (Unreliable a) where
 -- | 'debugBridge' outputs to the stderr debugging messages
 -- about what datum is getting send where.
 
-debugBridge :: (Show msg, Show resp) => Bridge msg resp -> IO (Bridge msg resp)
+debugBridge :: (Show msg) => Bridge msg -> IO (Bridge msg)
 debugBridge bridge = do
 	sendCounter <- newMVar 0
 	recvCounter <- newMVar 0
@@ -140,7 +140,7 @@ debugBridge bridge = do
 -- permise of a bridge; if no-one is listening, then data can get lost.
 -- It is in the nature of the bridge; things do not always make it.
 
-loopbackBridge :: IO (Bridge a a)
+loopbackBridge :: IO (Bridge a)
 loopbackBridge = do
 	ready <- newEmptyMVar	-- if full, then this is the var someone is waiting on
 	return $ Bridge
