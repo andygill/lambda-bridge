@@ -11,17 +11,53 @@ import Control.Concurrent
 import Control.Concurrent.MVar
 import System.Random
 import System.IO
+import Data.Map (Map)
+import qualified Data.Map as Map
 
-import Network. LambdaBridge.Bridge
 
-multiplex :: Word8 -> Bridge Frame Frame -> IO [Bridge Frame Frame]
-multiplex n bridge = 
---	forkIO $ let pack <- 
-	return $ 
-	  [ Bridge 
+import Network.LambdaBridge.Bridge
+
+-- | Takes a super-bridge, and creates many sub-bridges.
+-- The assumption is that the outgoing channel of the super-bridge
+-- does not block indefinitely, so the sub-bridges will also not block.
+-- Further, the super-bridge never block on responses, throwing
+-- away packets that any recieving bridge is not ready for.
+
+multiplex :: [Word8] -> Bridge Frame -> IO (Map Word8 (Bridge Frame))
+multiplex wds bridge = do
+
+	varMap <- sequence [ do var <- newEmptyMVar 
+			        return (i,var)
+			   | i <- wds
+			   ]
+
+	let varFM = Map.fromList varMap
+		
+	let loop m = do m ; loop m
+
+	forkIO $ loop $ do
+		Frame frame <- fromBridge bridge
+		case BS.uncons frame of
+		   Just(w,bs) -> 
+			case Map.lookup w varFM of
+				Nothing -> return () -- bad value, ignored
+				Just var -> do
+					-- If the sub-bridges is blocked, then 
+					-- throw away the packet.
+					tryPutMVar var (Frame bs)
+					return ()
+		   Nothing -> return ()
+
+	return $ Map.fromList
+	  [ ( i
+	    , Bridge 
+			-- Sending blocks, via the super-bridge.
 	  	{ toBridge = \ (Frame bs) -> toBridge bridge (Frame (BS.cons i bs))
-		, fromBridge = error ""
+			-- 
+		, fromBridge = takeMVar var
 		}
-	  | i <- take (fromIntegral n) [0..]
+	     )
+	  | i <- wds
+	  , let (Just var) = Map.lookup i varFM
 	  ]
 
