@@ -73,33 +73,6 @@ instance Binary Ack where
 	get = do packId <- get
 		 return $ Ack packId
 
-data Packet
-	= DataPacket 	Data
-	| AckPacket 	Ack
-	| BadPacket		-- use to denote a scrambled packet
-	deriving (Show)
-
-instance Binary Packet where
-	put (DataPacket (Data packId bs)) = do
-		putWord8 0x80
-		put packId
-		put (fromIntegral (BS.length bs) :: Word16)
-		putByteString bs
-	put (AckPacket (Ack packId)) = do
-		putWord8 0xa0 
-		put packId
-
-	get = do tag <- getWord8
-		 case tag :: Word8 of
-		    0x80 -> do packId <- get
-			       sz <- get :: Get.Get Word16
-			       bs <- Get.getByteString (fromIntegral sz)
-			       return $ DataPacket $ Data packId bs
-		    0xa0 -> do packId <- get
-			       return $ AckPacket $ Ack packId
-		    _ -> return $ BadPacket
-
-
 sendWaitingForAck :: PacketId -> IO ByteString -> IO Ack -> (Data -> IO ()) -> MVar (Maybe Double) -> MVar Int -> IO ()
 sendWaitingForAck p_id takeToSendVar takeAck putSend timeoutVar timeoutTime = do
 	bs <- takeToSendVar
@@ -175,70 +148,11 @@ recvReplyWithAck n takeRecvVar putAckVar putHaveRecvVar = do
 		     -- Todo: consider Nack		
 		  else do recvReplyWithAck n takeRecvVar putAckVar putHaveRecvVar
 
-{-
-sendBits :: IO Packet -> (Frame -> IO ()) -> IO ()
-sendBits takeSendVar putSockVar = do
-	packet <- takeSendVar
-	let bs = BS.concat $ LBS.toChunks $ encode packet
-	putSockVar (Frame bs)
-	sendBits takeSendVar putSockVar
-
-recvBits :: IO Frame -> (Data -> IO ()) -> (Ack -> IO ()) -> IO ()
-recvBits takeRecv putRecvVar putAckVar = do
-	Frame bs <- takeRecv
-	case decode (LBS.fromChunks [bs]) of
-	  	DataPacket dat -> do putRecvVar dat
-	  	AckPacket ack  -> do putAckVar ack
-	  	_ -> do return ()	-- ignore this packet
-	recvBits takeRecv putRecvVar putAckVar 
--}
-{-
-
-arqProtocol :: Bridge () Frame -> IO (Bridge BridgePort Link)
-arqProtocol opts = do
-	toSendVar <- newEmptyMVar :: IO (MVar (BridgePort,Link))
-	sendVar <- newEmptyMVar :: IO (MVar Packet)
-	ackVar  <- newEmptyMVar :: IO (MVar Ack)
-	recvVar <- newEmptyMVar :: IO (MVar Data)
-	haveRecvVar <- newEmptyMVar :: IO (MVar (BridgePort,Link))
-	timeoutVar <- newEmptyMVar :: IO (MVar (Maybe Double))
-	timeoutTime <- handleTimeouts timeoutVar
-
-		-- This waits for awk's when sending packets
-
-
-		-- This connects the "sendVar" MVar with the outgoing connection.
-	forkIO $ sendBits (takeMVar sendVar) (toBridge opts ())
-
-
-		-- This receives bits over the connection
-	forkIO $ recvBits    (fromBridge opts ())
-			     (putMVar recvVar)
-			     (putMVar ackVar)
-
-
-		-- This sends acks
-	forkIO $ recvReplyWithAck 0 
-				(takeMVar recvVar) 
-				(putMVar sendVar) 
-				(putMVar haveRecvVar)
-
-
-	return $ Bridge
-	  { toBridge = \ port link -> putMVar toSendVar (port,link)
-			-- TODO: add chunking to packet size
-	  , fromBridge = \ port -> do
-				(port,link) <- takeMVar haveRecvVar
-				return link
-	  }
--}
 
 
 sendWithARQ :: Bridge Frame -> IO (BS.ByteString -> IO ())
 sendWithARQ bridge = do
 	toSendVar   <- newEmptyMVar :: IO (MVar ByteString)
-	sendVar     <- newEmptyMVar :: IO (MVar Packet)
-	ackVar      <- newEmptyMVar :: IO (MVar Ack)
 	timeoutVar  <- newEmptyMVar :: IO (MVar (Maybe Double))
 	timeoutTime <- handleTimeouts timeoutVar
 	
@@ -254,10 +168,7 @@ sendWithARQ bridge = do
 
 recvWithARQ :: Bridge Frame -> IO (IO BS.ByteString)
 recvWithARQ bridge = do
-	recvVar     <- newEmptyMVar :: IO (MVar Data)
-	sendVar     <- newEmptyMVar :: IO (MVar Packet)
 	haveRecvVar <- newEmptyMVar :: IO (MVar ByteString)
-	ackVar      <- newEmptyMVar :: IO (MVar Ack)		-- no longer needed
 
 		-- This receives bits over the connection
 --	forkIO $ recvBits    (fromBridge bridge)
@@ -314,30 +225,3 @@ main = do
 	toStr :: String -> BS.ByteString
 	toStr = BS.pack . map (fromIntegral . ord)
 
-	
-{-
-	bridge_byte0 <- loopbackBridge
-	
-	bridge_byte1 <- debugBridge bridge_byte0
-	let u = def { loseU = 0.01, dupU = 0.01, mangleU = 0.01, mangler = \ g (Byte a) -> 
-									let (a',_) = random g
-									in Byte (fromIntegral (a' :: Int) + a) }
-	bridge_byte2 <- unreliableBridge def def bridge_byte0
-
---	sequence_ [ toBridge bridge_byte' x | x <- [0..255]]
-
-	bridge_frame <- frameProtocol 0.01 bridge_byte2
-
-	forkIO $ do
-		sequence [ toBridge bridge_frame $ Frame (toStr $ "Frame: " ++ show i ++ " " ++ [' '..'~'] ++ [chr 0xf1])
-			 | i <- [1..]
-			 ]
-		return ()
-		
-	sequence [ do
-		frame <- fromBridge bridge_frame
-		print frame
-			| _ <- [1..1000]]
-
-	return ()
--}
