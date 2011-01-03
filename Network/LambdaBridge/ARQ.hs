@@ -26,8 +26,18 @@ import System.Timeout
 import System.Random
 import System.IO
 import Data.Time.Clock
+import Data.Default
+import Control.Monad
+
 
 import Network.LambdaBridge.Bridge
+
+-- TMP
+import Network.LambdaBridge.Frame
+import Data.Char
+
+
+-- timeout a m = do { r <- m ; return $ Just r }
 
 
 -- 2 bit session id
@@ -42,9 +52,26 @@ data Data = Data
 		BS.ByteString	-- the data (strict bytestring, not lazy)
 	deriving (Show)
 	
+instance Binary Data where
+	put (Data packId bs) = do
+		put packId
+		put (fromIntegral (BS.length bs) :: Word16)
+		putByteString bs
+	get = do packId <- get
+	         sz <- get :: Get.Get Word16
+	         bs <- Get.getByteString (fromIntegral sz)
+	         return $ Data packId bs
+
 data Ack = Ack
 		PacketId	-- ^ packet I just got
 	deriving (Show)
+	
+instance Binary Ack where
+	put (Ack packId) = do
+		put packId
+
+	get = do packId <- get
+		 return $ Ack packId
 
 data Packet
 	= DataPacket 	Data
@@ -73,25 +100,33 @@ instance Binary Packet where
 		    _ -> return $ BadPacket
 
 
-sendWaitingForAck :: PacketId -> IO (ByteString) -> IO Ack -> (Packet -> IO ()) -> MVar (Maybe Double) -> MVar Int -> IO ()
+sendWaitingForAck :: PacketId -> IO ByteString -> IO Ack -> (Data -> IO ()) -> MVar (Maybe Double) -> MVar Int -> IO ()
 sendWaitingForAck p_id takeToSendVar takeAck putSend timeoutVar timeoutTime = do
 	bs <- takeToSendVar
 	sendWaitingForAck' p_id (Data p_id bs) takeToSendVar takeAck putSend timeoutVar timeoutTime
 
 sendWaitingForAck' p_no p takeToSendVar takeAck putSend timeoutVar timeoutTime = do
 	-- send the packet
-	putSend (DataPacket p)
-
+	print "send the packet"
+	putSend p
+	print "sent"
+	
 	tm  <- readMVar timeoutTime
 	tm0 <- getCurrentTime
 	-- wait for the awk (ignoring other awks)
+	print "waiting"
 	getAck <- timeout tm $ let
 		loop = do
+		   print "waiting..."
 		   Ack ack <- takeAck
+		   print $ "found " ++ show ack
 		   if ack == p_no
 			then return ()
 			else loop
 	    in loop
+
+	print $ "waited" ++ show getAck
+
 	-- be careful, http://en.wikipedia.org/wiki/Sorcerer%27s_Apprentice_Syndrome
 	case getAck of
 		-- timeout happened, try send packet again
@@ -125,18 +160,22 @@ handleTimeouts timings = do
 	forkIO $ loop firstTime
 	return var
 
-recvReplyWithAck :: PacketId -> IO Data -> (Packet -> IO ()) -> (ByteString -> IO ()) -> IO ()
-recvReplyWithAck n takeRecvVar putSendVar putHaveRecvVar = do
-		p@(Data packId bs) <- takeRecvVar
-		putSendVar (AckPacket $ Ack packId)	--   *always* send an awk
+recvReplyWithAck :: PacketId -> IO Data -> (Ack -> IO ()) -> (ByteString -> IO ()) -> IO ()
+recvReplyWithAck n takeRecvVar putAckVar putHaveRecvVar = do
+		print "recvReplyWithAck"
+		Data packId bs <- takeRecvVar
+		print $ "got packet, sending ack " ++ show packId
+		putAckVar (Ack packId)	--   *always* send an awk
+		print "sent awk"
 		if packId == n then do
 			putHaveRecvVar bs
-			recvReplyWithAck (n + 1) takeRecvVar putSendVar putHaveRecvVar
+			recvReplyWithAck (n + 1) takeRecvVar putAckVar putHaveRecvVar
 		     -- Otherwise, just ignore the (out of order) packet
 		     -- and eventually the client will resend (because there is no Ack)
 		     -- Todo: consider Nack		
-		  else do recvReplyWithAck n takeRecvVar putSendVar putHaveRecvVar
+		  else do recvReplyWithAck n takeRecvVar putAckVar putHaveRecvVar
 
+{-
 sendBits :: IO Packet -> (Frame -> IO ()) -> IO ()
 sendBits takeSendVar putSockVar = do
 	packet <- takeSendVar
@@ -152,6 +191,7 @@ recvBits takeRecv putRecvVar putAckVar = do
 	  	AckPacket ack  -> do putAckVar ack
 	  	_ -> do return ()	-- ignore this packet
 	recvBits takeRecv putRecvVar putAckVar 
+-}
 {-
 
 arqProtocol :: Bridge () Frame -> IO (Bridge BridgePort Link)
@@ -193,6 +233,7 @@ arqProtocol opts = do
 	  }
 -}
 
+
 sendWithARQ :: Bridge Frame -> IO (BS.ByteString -> IO ())
 sendWithARQ bridge = do
 	toSendVar   <- newEmptyMVar :: IO (MVar ByteString)
@@ -204,13 +245,10 @@ sendWithARQ bridge = do
 	-- This waits for awk's when sending packets
 	forkIO $ sendWaitingForAck 0
 				(takeMVar toSendVar)
-				(takeMVar ackVar)
-				(putMVar sendVar)
+				(liftM fromFrame $ fromBridge bridge)
+				(toBridge bridge . toFrame)
 				timeoutVar
 				timeoutTime
-
-	-- This connects the "sendVar" MVar with the outgoing connection.
-	forkIO $ sendBits (takeMVar sendVar) (toBridge bridge)
 
 	return $ putMVar toSendVar 
 
@@ -222,16 +260,84 @@ recvWithARQ bridge = do
 	ackVar      <- newEmptyMVar :: IO (MVar Ack)		-- no longer needed
 
 		-- This receives bits over the connection
-	forkIO $ recvBits    (fromBridge bridge)
-			     (putMVar recvVar)
-			     (putMVar ackVar)
+--	forkIO $ recvBits    (fromBridge bridge)
+--			     (putMVar recvVar)
+--			     (putMVar ackVar)
 
-
-		-- This sends acks
+	-- This sends acks
 	forkIO $ recvReplyWithAck 0 
-				(takeMVar recvVar) 
-				(putMVar sendVar) 
+				(liftM fromFrame $ fromBridge bridge)
+				(toBridge bridge . toFrame)
 				(putMVar haveRecvVar)
 
 	return $ takeMVar haveRecvVar
+
+-- Set up an end to end to test things.
+
 	
+main :: IO ()
+main = do
+	bridge_byte_lhs0 <- stubBridge $ [] -- cycle [Byte n | n <- [0..255]]
+
+	(bridge_byte_lhs,bridge_byte_rhs) <- pipeBridge :: IO (Bridge Byte, Bridge Byte)	
+
+	let u = def { loseU = 0.05, dupU = 0.005, mangleU = 0.005, mangler = \ g (Byte a) -> 
+									let (a',_) = random g
+									in Byte (fromIntegral (a' :: Int) + a) }
+	bridge_byte_lhs <- unreliableBridge u def bridge_byte_lhs
+	bridge_byte_rhs <- unreliableBridge u def bridge_byte_rhs
+
+--	bridge_byte_lhs <- debugBridge "bridge_byte_lhs" bridge_byte_lhs
+--	bridge_byte_rhs <- debugBridge "bridge_byte_rhs" bridge_byte_rhs
+	
+	bridge_frame_lhs <- frameProtocol 0.01 bridge_byte_lhs
+	bridge_frame_rhs <- frameProtocol 0.01 bridge_byte_rhs
+
+	send <- sendWithARQ bridge_frame_lhs
+	recv <- recvWithARQ bridge_frame_rhs
+
+	forkIO $ let loop n = do
+			send (toStr $ show (n :: Int))
+			loop (succ n)
+		 in loop 0
+
+	forkIO $ let loop = do
+			msg <- recv
+			print msg
+			loop
+		 in loop
+
+	threadDelay (1000 * 1000 * 1000)
+
+	return ()
+   where	
+	toStr :: String -> BS.ByteString
+	toStr = BS.pack . map (fromIntegral . ord)
+
+	
+{-
+	bridge_byte0 <- loopbackBridge
+	
+	bridge_byte1 <- debugBridge bridge_byte0
+	let u = def { loseU = 0.01, dupU = 0.01, mangleU = 0.01, mangler = \ g (Byte a) -> 
+									let (a',_) = random g
+									in Byte (fromIntegral (a' :: Int) + a) }
+	bridge_byte2 <- unreliableBridge def def bridge_byte0
+
+--	sequence_ [ toBridge bridge_byte' x | x <- [0..255]]
+
+	bridge_frame <- frameProtocol 0.01 bridge_byte2
+
+	forkIO $ do
+		sequence [ toBridge bridge_frame $ Frame (toStr $ "Frame: " ++ show i ++ " " ++ [' '..'~'] ++ [chr 0xf1])
+			 | i <- [1..]
+			 ]
+		return ()
+		
+	sequence [ do
+		frame <- fromBridge bridge_frame
+		print frame
+			| _ <- [1..1000]]
+
+	return ()
+-}

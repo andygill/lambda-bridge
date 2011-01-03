@@ -2,11 +2,10 @@
 -- | Support for providing a Frame-based API on top of an unreliable bytestream.
 
 module Network.LambdaBridge.Frame
---	( crc
---	, maxFrameSize
---	, frameProtocol
---	) where
-	where
+	( frameProtocol
+	, maxFrameSize
+	, crc
+	) where
 
 import Data.Word
 import Data.Bits
@@ -24,30 +23,12 @@ import Network.LambdaBridge.Bridge
 import System.Random
 import Debug.Trace
 
-{-
 
-Frame format:
 
-<pre>
-  <- sync + size            ->|<- payload ...              ->|
-  +------+------+------+------+----------------+------+------+
-  | 0xf1 |  sz  |   CRC-16    |  ... DATA .... |   CRC-16    |
-  +------+------+------+------+----------------+------+------+
-</pre>
-
-The '0xe4' is the sync marker starter; then comes the size (1 ...217),
-then the CRC-16 for the [0xf1,sz]. This CRC-16 will never contain 0xf1
-in either byte (causing the upto 238 restriction). This means that
-when looking for a header, if a 0xe4 is found in the sz or CRC positions,
-this marks a candidate for a new sync marker, and the one being
-processed in corrupt.
-
--}
-
--- | Compute the crc for a sequence of bytes, assuming LSB processing.
--- The arguments are the crc code, and the initial value, often -1.
+-- | Compute the crc for a sequence of bytes.
+-- The arguments for 'crc' are the crc code, and the initial value, often -1.
 --
---For example, CRC-16-CCITT, LSB first (for use with RS-232), is crc 0x1021 0xffff.
+--For example, CRC-16-CCITT, which is used for 'Frame', is crc 0x1021 0xffff.
 
 crc :: (Bits w) => w -> w -> [Word8] -> w
 crc code start bs = foldl (\ crc b -> 
@@ -63,7 +44,7 @@ crc code start bs = foldl (\ crc b ->
 			  | b <- bs
 			  ]
 
--- | The maximum frame payload size, not including CRC.
+-- | The maximum frame payload size, not including CRCs or headers, pre-stuffed.
 maxFrameSize :: Int
 maxFrameSize = 238
 
@@ -87,8 +68,38 @@ sanityCheck =
 	tag = 0xf1
 
 -----------------------------------------------------------------------
--- | 'frameProtocol' provides a Bridge Frame Frame from the services of a 'Bridge Byte Byte'.
+-- | 'frameProtocol' provides a Bridge Frame Frame from the services of a 'Bridge Byte'.
 -- It is thread safe (two Frame writes to the same bridge will not garble each other)
+
+{- |
+
+It uses the following Frame format:
+
+
+> <- sync + size            ->|<- payload ...              ->|
+> +------+------+------+------+----------------+------+------+
+> | 0xf1 |  sz  |   CRC-16    |  ... DATA .... |   CRC-16    |
+> +------+------+------+------+----------------+------+------+
+
+
+The '0xf1' is the sync marker starter; then comes the size (0 ...238),
+then the CRC-16 for the [0xf1,sz]. This CRC-16 will never contain 0xf1
+in either byte (causing the upto 238 restriction). This means that
+when looking for a header, if a 0xf1 is found in the sz or CRC positions,
+this marks a candidate for a new sync marker, and the one being
+processed in corrupt.
+
+Furthermore, the data is byte-stuffed 
+(<http://en.wikipedia.org/wiki/Bit_stuffing>)
+for 0xf1, so 0xf1 in DATA and the DATA-CRC is represented
+using the pair of bytes 0xf1 0xff (which will never occur in a header).
+In this way, if a byte is lost, the next header can be found
+by scaning for 0xf1 N, where N <= 238.
+
+The two arguments for 'frameProtocol' are the timeout in seconds for
+reading character for the 'Bridge Byte', and the 'Bridge Byte' itself.
+
+-}
 
 frameProtocol :: Double -> Bridge Byte -> IO (Bridge Frame)
 frameProtocol tmOut byte_bridge = do
@@ -100,12 +111,14 @@ frameProtocol tmOut byte_bridge = do
 	let write wd = toBridge byte_bridge (Byte wd)
 
 	let writeWithCRC stuffing xs = do
+		let crc_val = crc (0x1021 :: Word16) 0xffff (xs ++ [0,0])
 		sequence_ [ do write x
 			       if x == tag && stuffing then write 0xff else return ()
-			  | x <- xs ]
-		let crc_val = crc (0x1021 :: Word16) 0xffff (xs ++ [0,0])
-		write (fromIntegral (crc_val `div` 256))
-		write (fromIntegral (crc_val `mod` 256))
+			  | x <- xs ++ [ fromIntegral $ crc_val `div` 256
+				       , fromIntegral $ crc_val `mod` 256
+				       ]
+			 ]
+
 
 	let sender = do
 		bs <- takeMVar sending
@@ -129,6 +142,7 @@ frameProtocol tmOut byte_bridge = do
 	let tmOut' :: Int
 	    tmOut' = floor (tmOut * 1000 * 1000)
 
+	-- This is quite expensive of reading each character.
 	let step = do
 		wd' <- timeout tmOut' read 
 		case wd' of
@@ -139,7 +153,7 @@ frameProtocol tmOut byte_bridge = do
 
 	let findHeader :: IO ()
 	    findHeader = do
-		wd0 <- step
+		wd0 <- read	-- the first byte of a packet can wait as long as you like
 		wd1 <- step
 		wd2 <- step
 		wd3 <- step
@@ -158,15 +172,15 @@ frameProtocol tmOut byte_bridge = do
 
 	    readWithPadding :: IO Word8
 	    readWithPadding = do
-		wd1 <- read
+		wd1 <- step
 
 		if wd1 == tag then 
-			do wd2 <- read
+			do wd2 <- step
 			   if wd2 == 0xff then return wd1 else do
-				wd3 <- read
-				wd4 <- read
+				wd3 <- step
+				wd4 <- step
 				findHeader' wd1 wd2 wd3 wd4
-				fail "trampoline (to clear stack)"
+				fail "trampoline (hack to clear stack)"
 		    else do
 			return wd1
 
@@ -222,7 +236,7 @@ main :: IO ()
 main = do
 	bridge_byte0 <- loopbackBridge
 	
-	bridge_byte1 <- debugBridge bridge_byte0
+	bridge_byte1 <- debugBridge "bridge_byte" bridge_byte0
 	let u = def { loseU = 0.01, dupU = 0.01, mangleU = 0.01, mangler = \ g (Byte a) -> 
 									let (a',_) = random g
 									in Byte (fromIntegral (a' :: Int) + a) }
@@ -244,6 +258,6 @@ main = do
 			| _ <- [1..1000]]
 
 	return ()
-
-toStr :: String -> BS.ByteString
-toStr = BS.pack . map (fromIntegral . ord)
+  where
+	toStr :: String -> BS.ByteString
+	toStr = BS.pack . map (fromIntegral . ord)

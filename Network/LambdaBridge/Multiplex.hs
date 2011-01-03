@@ -20,8 +20,8 @@ import Network.LambdaBridge.Bridge
 -- | Takes a super-bridge, and creates many sub-bridges.
 -- The assumption is that the outgoing channel of the super-bridge
 -- does not block indefinitely, so the sub-bridges will also not block.
--- Further, the super-bridge never block on responses, throwing
--- away packets that any recieving bridge is not ready for.
+-- Further, the super-bridge never block on responses, given
+-- the precondition that the sub-bridges also never block on responses.
 
 multiplex :: [Word8] -> Bridge Frame -> IO (Map Word8 (Bridge Frame))
 multiplex wds bridge = do
@@ -42,9 +42,7 @@ multiplex wds bridge = do
 			case Map.lookup w varFM of
 				Nothing -> return () -- bad value, ignored
 				Just var -> do
-					-- If the sub-bridges is blocked, then 
-					-- throw away the packet.
-					tryPutMVar var (Frame bs)
+					putMVar var (Frame bs)
 					return ()
 		   Nothing -> return ()
 
