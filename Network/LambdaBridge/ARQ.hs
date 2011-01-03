@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 -- | Implementation of ARQ; http://en.wikipedia.org/wiki/Automatic_repeat_request "Stop-and-wait ARQ".
 -- Can be used to put a lightweight reliable link on top of an unreliable packet system, like UDP,
 -- or a unreliable bytestream system like RS232.
@@ -22,7 +23,6 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Control.Concurrent
 import Control.Concurrent.MVar
-import System.Timeout 
 import System.Random
 import System.IO
 import Data.Time.Clock
@@ -31,13 +31,11 @@ import Control.Monad
 
 
 import Network.LambdaBridge.Bridge
+import Network.LambdaBridge.Timeout
 
 -- TMP
 import Network.LambdaBridge.Frame
 import Data.Char
-
-
--- timeout a m = do { r <- m ; return $ Just r }
 
 
 -- 2 bit session id
@@ -73,12 +71,13 @@ instance Binary Ack where
 	get = do packId <- get
 		 return $ Ack packId
 
-sendWaitingForAck :: PacketId -> IO ByteString -> IO Ack -> (Data -> IO ()) -> MVar (Maybe Double) -> MVar Int -> IO ()
-sendWaitingForAck p_id takeToSendVar takeAck putSend timeoutVar timeoutTime = do
+sendWaitingForAck :: (IO () -> IO (Maybe ())) -> PacketId -> IO ByteString -> IO Ack -> (Data -> IO ()) -> MVar (Maybe Double) -> MVar Int -> IO ()
+sendWaitingForAck timeout p_id takeToSendVar takeAck putSend timeoutVar timeoutTime = do
 	bs <- takeToSendVar
-	sendWaitingForAck' p_id (Data p_id bs) takeToSendVar takeAck putSend timeoutVar timeoutTime
+	sendWaitingForAck' timeout p_id (Data p_id bs) takeToSendVar takeAck putSend timeoutVar timeoutTime
 
-sendWaitingForAck' p_no p takeToSendVar takeAck putSend timeoutVar timeoutTime = do
+sendWaitingForAck' :: (IO () -> IO (Maybe ())) -> PacketId -> Data -> IO ByteString -> IO Ack -> (Data -> IO ()) -> MVar (Maybe Double) -> MVar Int -> IO ()
+sendWaitingForAck' timeout p_no p takeToSendVar takeAck putSend timeoutVar timeoutTime = do
 	-- send the packet
 	print "send the packet"
 	putSend p
@@ -88,7 +87,7 @@ sendWaitingForAck' p_no p takeToSendVar takeAck putSend timeoutVar timeoutTime =
 	tm0 <- getCurrentTime
 	-- wait for the awk (ignoring other awks)
 	print "waiting"
-	getAck <- timeout tm $ let
+	getAck <- timeout $ let
 		loop = do
 		   print "waiting..."
 		   Ack ack <- takeAck
@@ -104,11 +103,10 @@ sendWaitingForAck' p_no p takeToSendVar takeAck putSend timeoutVar timeoutTime =
 	case getAck of
 		-- timeout happened, try send packet again
 	   Nothing -> do putMVar timeoutVar Nothing
-			 sendWaitingForAck' p_no p takeToSendVar takeAck putSend timeoutVar timeoutTime
+			 sendWaitingForAck' timeout p_no p takeToSendVar takeAck putSend timeoutVar timeoutTime
 		-- done, move on please
 	   Just () -> do tm1 <- getCurrentTime
-			 putMVar timeoutVar $ Just (realToFrac $ tm1 `diffUTCTime` tm0) 
-		         sendWaitingForAck (p_no + 1) takeToSendVar takeAck putSend timeoutVar timeoutTime
+		         sendWaitingForAck timeout (p_no + 1) takeToSendVar takeAck putSend timeoutVar timeoutTime
 
 
 handleTimeouts :: MVar (Maybe Double) -> IO (MVar Int)
@@ -150,14 +148,18 @@ recvReplyWithAck n takeRecvVar putAckVar putHaveRecvVar = do
 
 
 
-sendWithARQ :: Bridge Frame -> IO (BS.ByteString -> IO ())
-sendWithARQ bridge = do
+sendWithARQ :: Bridge Frame -> Timeout Double -> IO (BS.ByteString -> IO ())
+sendWithARQ bridge tm = do
 	toSendVar   <- newEmptyMVar :: IO (MVar ByteString)
 	timeoutVar  <- newEmptyMVar :: IO (MVar (Maybe Double))
 	timeoutTime <- handleTimeouts timeoutVar
+
+	timeout' <- timeout tm
 	
 	-- This waits for awk's when sending packets
-	forkIO $ sendWaitingForAck 0
+	forkIO $ sendWaitingForAck 
+				timeout'
+				0
 				(takeMVar toSendVar)
 				(liftM fromFrame $ fromBridge bridge)
 				(toBridge bridge . toFrame)
@@ -192,7 +194,7 @@ main = do
 
 	(bridge_byte_lhs,bridge_byte_rhs) <- pipeBridge :: IO (Bridge Byte, Bridge Byte)	
 
-	let u = def { loseU = 0.05, dupU = 0.005, mangleU = 0.005, mangler = \ g (Byte a) -> 
+	let u = def { loseU = 0.01, dupU = 0.001, mangleU = 0.005, mangler = \ g (Byte a) -> 
 									let (a',_) = random g
 									in Byte (fromIntegral (a' :: Int) + a) }
 	bridge_byte_lhs <- unreliableBridge u def bridge_byte_lhs
@@ -204,7 +206,11 @@ main = do
 	bridge_frame_lhs <- frameProtocol 0.01 bridge_byte_lhs
 	bridge_frame_rhs <- frameProtocol 0.01 bridge_byte_rhs
 
-	send <- sendWithARQ bridge_frame_lhs
+	send <- sendWithARQ bridge_frame_lhs $ Timeout 1 $ \ t o -> 
+			case o of
+			   Nothing -> min (t * 2) 10
+			   Just a  -> (a * 4 + t) / 2
+	
 	recv <- recvWithARQ bridge_frame_rhs
 
 	forkIO $ let loop n = do
