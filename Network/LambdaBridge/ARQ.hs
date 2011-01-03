@@ -71,20 +71,18 @@ instance Binary Ack where
 	get = do packId <- get
 		 return $ Ack packId
 
-sendWaitingForAck :: (IO () -> IO (Maybe ())) -> PacketId -> IO ByteString -> IO Ack -> (Data -> IO ()) -> MVar (Maybe Double) -> MVar Int -> IO ()
-sendWaitingForAck timeout p_id takeToSendVar takeAck putSend timeoutVar timeoutTime = do
+sendWaitingForAck :: (IO () -> IO (Maybe ())) -> PacketId -> IO ByteString -> IO Ack -> (Data -> IO ())  -> IO ()
+sendWaitingForAck timeout p_id takeToSendVar takeAck putSend  = do
 	bs <- takeToSendVar
-	sendWaitingForAck' timeout p_id (Data p_id bs) takeToSendVar takeAck putSend timeoutVar timeoutTime
+	sendWaitingForAck' timeout p_id (Data p_id bs) takeToSendVar takeAck putSend 
 
-sendWaitingForAck' :: (IO () -> IO (Maybe ())) -> PacketId -> Data -> IO ByteString -> IO Ack -> (Data -> IO ()) -> MVar (Maybe Double) -> MVar Int -> IO ()
-sendWaitingForAck' timeout p_no p takeToSendVar takeAck putSend timeoutVar timeoutTime = do
+sendWaitingForAck' :: (IO () -> IO (Maybe ())) -> PacketId -> Data -> IO ByteString -> IO Ack -> (Data -> IO ()) -> IO ()
+sendWaitingForAck' timeout p_no p takeToSendVar takeAck putSend = do
 	-- send the packet
 	print "send the packet"
 	putSend p
 	print "sent"
 	
-	tm  <- readMVar timeoutTime
-	tm0 <- getCurrentTime
 	-- wait for the awk (ignoring other awks)
 	print "waiting"
 	getAck <- timeout $ let
@@ -102,34 +100,9 @@ sendWaitingForAck' timeout p_no p takeToSendVar takeAck putSend timeoutVar timeo
 	-- be careful, http://en.wikipedia.org/wiki/Sorcerer%27s_Apprentice_Syndrome
 	case getAck of
 		-- timeout happened, try send packet again
-	   Nothing -> do putMVar timeoutVar Nothing
-			 sendWaitingForAck' timeout p_no p takeToSendVar takeAck putSend timeoutVar timeoutTime
+	   Nothing -> sendWaitingForAck' timeout p_no p takeToSendVar takeAck putSend 
 		-- done, move on please
-	   Just () -> do tm1 <- getCurrentTime
-		         sendWaitingForAck timeout (p_no + 1) takeToSendVar takeAck putSend timeoutVar timeoutTime
-
-
-handleTimeouts :: MVar (Maybe Double) -> IO (MVar Int)
-handleTimeouts timings = do
-	let firstTime = 1 / 1000 :: Double	-- 1 second max latency (0.5 each direction)
-	var <- newEmptyMVar
-	let loop avr = do
-		tryTakeMVar var
-		putMVar var (floor (avr * 1000 * 1000))	-- av is the best guess so far for a good timeout
-		v <- takeMVar timings
-{-
-		case v of
-		  Nothing -> print avr
-		  Just {} -> return ()
--}
-		case v of
-			-- Timeout happend, blame the timeout, double the timeout
-		   Nothing -> loop (min (avr * 2) firstTime)
-			-- Wait at least the average of 4 times average length of this packet and the old timeout.
-			-- This stops one single fast (mistaken) round trip time from messing things up
-		   Just t  -> loop ((t * 4 + avr) / 2)
-	forkIO $ loop firstTime
-	return var
+	   Just () -> sendWaitingForAck timeout (p_no + 1) takeToSendVar takeAck putSend 
 
 recvReplyWithAck :: PacketId -> IO Data -> (Ack -> IO ()) -> (ByteString -> IO ()) -> IO ()
 recvReplyWithAck n takeRecvVar putAckVar putHaveRecvVar = do
@@ -151,8 +124,6 @@ recvReplyWithAck n takeRecvVar putAckVar putHaveRecvVar = do
 sendWithARQ :: Bridge Frame -> Timeout Double -> IO (BS.ByteString -> IO ())
 sendWithARQ bridge tm = do
 	toSendVar   <- newEmptyMVar :: IO (MVar ByteString)
-	timeoutVar  <- newEmptyMVar :: IO (MVar (Maybe Double))
-	timeoutTime <- handleTimeouts timeoutVar
 
 	timeout' <- timeout tm
 	
@@ -163,8 +134,6 @@ sendWithARQ bridge tm = do
 				(takeMVar toSendVar)
 				(liftM fromFrame $ fromBridge bridge)
 				(toBridge bridge . toFrame)
-				timeoutVar
-				timeoutTime
 
 	return $ putMVar toSendVar 
 
