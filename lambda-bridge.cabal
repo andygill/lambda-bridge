@@ -39,7 +39,7 @@ Library
   C-Sources:           connect/lb_board_connect.c
   Include-Dirs:        connect                       
 
--- Now the bridges.
+-- Now the drivers.
 
 Executable lb_udp
    Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default, containers
