@@ -29,9 +29,9 @@ Library
   Exposed-Modules:     Network.LambdaBridge
                        Network.LambdaBridge.ARQ
                        Network.LambdaBridge.Bridge
+                       Network.LambdaBridge.Driver
                        Network.LambdaBridge.Frame
                        Network.LambdaBridge.Multiplex
-                       Network.LambdaBridge.Service
                        Network.LambdaBridge.Timeout
 
   Hs-Source-Dirs:      .

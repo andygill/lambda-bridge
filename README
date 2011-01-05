@@ -5,9 +5,9 @@ Directory Structure
  * Network -- the Haskell source
    * Network/LambdaBridge/*.hs -- generic Haskell "network" code for building lambda bridges.
 
- * bridges -- A bridge is a lambda-bridge device driver, in user-space. They are implemented
+ * drivers -- The lambda-bridge device driver, in user-space. They are implemented
    as stand alone user processes that are invoked from the [lb_]board_connect function
-   in C or Haskell. By convention, the lambda-bridge bridge binaries start with lb_.
+   in C or Haskell. By convention, the lambda-bridge driver binaries start with lb_.
 
  * connect -- C implementation of lb_board_connect.
  
