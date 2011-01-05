@@ -29,7 +29,7 @@ import Network.LambdaBridge.ARQ
 
 data SessionHandle = SessionHandle Socket SockAddr
 
-main = bridge_service $ \ args sends recvs -> do return ()
+main = bridge_service "lb_ubp driver" $ \ args sends recvs -> do return ()
 {-
 	
 	hPutStrLn stderr "Remote Service:"
