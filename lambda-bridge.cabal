@@ -76,3 +76,7 @@ Executable haskell-test3
    Include-Dirs:        connect
    Main-Is: Main.hs
 
+Executable frame-bridge
+   Build-Depends: 	base >= 4 && < 5, binary, bytestring, random, time, data-default
+   Hs-Source-Dirs: 	. tests/frame-bridge
+   Main-Is: Main.hs
