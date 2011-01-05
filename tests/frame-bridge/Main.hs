@@ -19,17 +19,16 @@ import Control.Monad
 import Network.LambdaBridge.Bridge
 import Network.LambdaBridge.Timeout
 import Network.LambdaBridge.ARQ
-
--- TMP
+import Network.LambdaBridge.Multiplex
 import Network.LambdaBridge.Frame
 import Data.Char
+
+import qualified Data.Map as Map
 
 -- Set up an end to end to test things.
 
 main :: IO ()
 main = do
-	bridge_byte_lhs0 <- stubBridge $ [] -- cycle [Byte n | n <- [0..255]]
-
 	(bridge_byte_lhs,bridge_byte_rhs) <- pipeBridge :: IO (Bridge Byte, Bridge Byte)	
 
 	let u = def { pauseU = 0.001
@@ -45,7 +44,15 @@ main = do
 	bridge_frame_lhs <- frameProtocol bridge_byte_lhs
 	bridge_frame_rhs <- frameProtocol bridge_byte_rhs
 
+	bridges_frame_lhs <- multiplexBridge [0x99,0x100] bridge_frame_lhs
+	bridges_frame_rhs <- multiplexBridge [0x99,0x100] bridge_frame_rhs
+
+	let Just bridge_frame_lhs = Map.lookup 0x99 bridges_frame_lhs
+	let Just bridge_frame_rhs = Map.lookup 0x99 bridges_frame_rhs
+
+
 	bridge_frame_lhs <- debugBridge "bridge_frame_rhs" bridge_frame_lhs
+	
 
 	send <- sendWithARQ bridge_frame_lhs $ Timeout 1 $ \ t o -> 
 			case o of
@@ -62,7 +69,7 @@ main = do
 	forkIO $ let loop = do
 			msg <- recv
 			print msg
-			threadDelay (1000 * 1000)
+			threadDelay (100 * 1000)
 			loop
 		 in loop
 
@@ -70,6 +77,6 @@ main = do
 
 	return ()
    where	
-	toStr :: String -> BS.ByteString
-	toStr = BS.pack . map (fromIntegral . ord)
+	toStr :: String -> Link
+	toStr = Link . BS.pack . map (fromIntegral . ord)
 

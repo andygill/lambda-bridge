@@ -37,9 +37,6 @@ import Network.LambdaBridge.Timeout
 import Network.LambdaBridge.Frame
 import Data.Char
 
-
--- 2 bit session id
-type SessionId = Word16
 type PacketId  = Word16
 
 -- | The data packet. It is always okay to fragment a packet, as long as the packets do not appear out of order.
@@ -78,12 +75,9 @@ instance Binary Ack where
 		   0x00 -> return $ Ack packId
 		   0xff -> return $ Free packId
 
-
-
-
-sendWithARQ :: Bridge Frame -> Timeout Double -> IO (BS.ByteString -> IO ())
+sendWithARQ :: Bridge Frame -> Timeout Double -> IO (Link -> IO ())
 sendWithARQ bridge tm = do
-	toSendVar   <- newEmptyMVar :: IO (MVar ByteString)
+	toSendVar   <- newEmptyMVar :: IO (MVar Link)
 
 	fastTimeout <- timeout tm
 	slowTimeout <- timeout tm
@@ -91,7 +85,7 @@ sendWithARQ bridge tm = do
 	let putData   = toBridge bridge . toFrame
 
 	let start n = do
-		bs <- takeMVar toSendVar
+		Link bs <- takeMVar toSendVar
 		ready (Data n bs)
 
 	    ready dat@(Data n bs) = do
@@ -142,60 +136,13 @@ sendWithARQ bridge tm = do
 		  Just (Free _) -> start (n+1)
 		  Nothing       -> ping n
 		
-		
-{-		
-
-	let sendWaitingForAck :: PacketId -> IO ByteString -> IO Ack -> (Data -> IO ())  -> IO ()
-	    sendWaitingForAck  p_id takeToSendVar takeAck putSend  = do
-		bs <- takeToSendVar
-		sendWaitingForAck'  p_id (Data p_id bs) takeToSendVar takeAck putSend 
-
-	    sendWaitingForAck' :: PacketId -> Data -> IO ByteString -> IO Ack -> (Data -> IO ()) -> IO ()
-	    sendWaitingForAck'  p_no p takeToSendVar takeAck putSend = do
-		-- send the packet
-		print "send the packet"
-		putSend p
-		print "sent"
-	
-		-- wait for the awk (ignoring other awks)
-		print "waiting"
-		getAck <- timeout' $ let
-			loop = do
-		   		print "waiting..."
-		   		Ack ack <- takeAck
-		   		print $ "found " ++ show ack
-		   		if ack == p_no
-					then return ()
-					else loop
-	    	  in loop
-
-		print $ "waited" ++ show getAck
-
-	-- be careful, http://en.wikipedia.org/wiki/Sorcerer%27s_Apprentice_Syndrome
-		case getAck of
-		-- timeout happened, try send packet again
-	   		Nothing -> sendWaitingForAck'  p_no p takeToSendVar takeAck putSend 
-		-- done, move on please
-	   		Just () -> sendWaitingForAck  (p_no + 1) takeToSendVar takeAck putSend 
-
-
--}
-{-
-	-- This waits for awk's when sending packets
-	forkIO $ sendWaitingForAck 
-				0
-				(takeMVar toSendVar)
-				(liftM fromFrame $ fromBridge bridge)
-				(toBridge bridge . toFrame)
--}
-
 	forkIO $ start 0
 
 	return $ putMVar toSendVar 
 
-recvWithARQ :: Bridge Frame -> IO (IO BS.ByteString)
+recvWithARQ :: Bridge Frame -> IO (IO Link)
 recvWithARQ bridge = do
-	haveRecvVar <- newEmptyMVar :: IO (MVar ByteString)
+	haveRecvVar <- newEmptyMVar :: IO (MVar Link)
 
 	let getData  = liftM fromFrame $ fromBridge bridge
 	let putAck   = toBridge bridge . toFrame
@@ -211,7 +158,7 @@ recvWithARQ bridge = do
 			putAck (Free n) -- send a free, because this packet is already here
 			start n
 		      else do	-- m == n
-			pushed <- tryPutMVar haveRecvVar bs
+			pushed <- tryPutMVar haveRecvVar $ Link bs
 			if pushed then do
 				putAck (Free n) -- send a free, because we've got and recieved the packet
 				start (n+1)	-- and wait for the next packet
@@ -222,7 +169,7 @@ recvWithARQ bridge = do
 
 				sync <- newEmptyMVar
 				forkIO $ do
-					putMVar haveRecvVar bs
+					putMVar haveRecvVar $ Link bs
 					putAck (Free m)
 					putMVar sync ()
 				blocked n sync
