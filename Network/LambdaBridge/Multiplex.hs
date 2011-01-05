@@ -16,7 +16,7 @@ import qualified Data.Map as Map
 
 import Network.LambdaBridge.Bridge
 
--- | 'multiplexBridge" takes a super-bridge, and creates many sub-bridges.
+-- | 'multiplexBridge' takes a super-bridge, and creates many sub-bridges.
 -- The assumption is that the outgoing channel of the super-bridge
 -- does not block indefinitely, so the sub-bridges will also not block.
 -- Further, the super-bridge never block on responses, given
