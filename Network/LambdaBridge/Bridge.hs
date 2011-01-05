@@ -56,7 +56,6 @@ newtype Frame = Frame BS.ByteString
 instance Show Frame where
    show (Frame wds) = "Frame " ++ show [ Byte w | w <- BS.unpack wds ]
 
-
 -- | A way of turning a Frame into its contents, using the 'Binary' class.
 -- This may throw an async exception.
 fromFrame :: (Binary a) => Frame -> a
@@ -66,8 +65,16 @@ fromFrame (Frame fs) = decode (LBS.fromChunks [fs])
 toFrame :: (Binary a) => a -> Frame
 toFrame a = Frame $ BS.concat $ LBS.toChunks $ encode a
 
--- | ''realisticBridge'' is a way of making a 'Bridge' less
--- reliable, for testing purposes.
+-- | A 'Link' is a sequence of ByteString that can be 
+-- sub-divided if needed. Its just a sequence in a bundle for 
+-- transportation.
+
+newtype Link = Link BS.ByteString 
+instance Show Link where
+   show (Link wds) = "Link " ++ show [ Byte w | w <- BS.unpack wds ]
+
+-- | ''realisticBridge'' is a way of making a 'Bridge' less sterile, for testing purposes.
+--- currently only effects the outgoing direction.
 realisticBridge :: (Show msg) => Realistic msg -> Realistic msg -> Bridge msg -> IO (Bridge msg)
 realisticBridge send recv sock = do
 	let you :: Float -> IO Bool
