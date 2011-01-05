@@ -20,7 +20,6 @@ timeout (Timeout first fn) = do
 	timeVar <- newMVar first
 	return $ \ comp -> do
 	   waitFor <- takeMVar timeVar
-	   print ("Wait for : ", waitFor)
 	   (do  tm0 <- getCurrentTime
 		res <- T.timeout (floor (waitFor * 1000 * 1000)) comp
 		case res of
