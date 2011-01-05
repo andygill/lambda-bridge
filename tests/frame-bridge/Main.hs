@@ -47,8 +47,8 @@ main = do
 	bridges_frame_lhs <- multiplexBridge [0x99,0x100] bridge_frame_lhs
 	bridges_frame_rhs <- multiplexBridge [0x99,0x100] bridge_frame_rhs
 
-	let Just bridge_frame_lhs = Map.lookup 0x99 bridges_frame_lhs
-	let Just bridge_frame_rhs = Map.lookup 0x99 bridges_frame_rhs
+	let bridge_frame_lhs = bridges_frame_lhs 0x99
+	let bridge_frame_rhs = bridges_frame_rhs 0x99
 
 
 	bridge_frame_lhs <- debugBridge "bridge_frame_rhs" bridge_frame_lhs

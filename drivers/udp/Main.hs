@@ -19,23 +19,24 @@ import System.Random
 
 import Prelude hiding (getContents)
 
-import Network.LambdaBridge.Service
-import Network.LambdaBridge.ARQ
+import Network.LambdaBridge.Driver
+import Network.LambdaBridge.Bridge
+import Network.LambdaBridge.Timeout
 
 -- This Bridge service uses UDP to send and recieve requests,
 -- over (default) port 9237.
 
--- How much to listen for
+-- Remember:
+--   % nc -u -l 9237 | mod
+
 
 data SessionHandle = SessionHandle Socket SockAddr
 
-main = bridge_service "lb_ubp driver" $ \ args sends recvs -> do return ()
-{-
-	
+main = bridge_frame_driver "lb_ubp" (boundLimit 0.3) $ \ args -> do
 	hPutStrLn stderr "Remote Service:"
-	case (args,sends,recvs) of
-	  (remote_cmd:hostname:port:style:rest,[s],[r]) -> do
-		print $ "got" ++ show (hostname,port,rest,s,r)
+	case args of
+	  (remote_cmd:hostname:port:style:rest) -> do
+		print $ "got" ++ show (hostname,port,rest)
 
 		let sockType = case style of
 			  "UDP" -> Datagram
@@ -51,30 +52,9 @@ main = bridge_service "lb_ubp driver" $ \ args sends recvs -> do return ()
 
 	 	connect sock $ addrAddress serveraddr
 
-		protocol <- arqProtocol $ ARQ_Options
-			{ toSocket 	  = sendAll sock
-			, fromSocket 	  = recv sock 2048
-			, transmitFailure = Nothing
-			, receiveFailure  = Nothing
+		return $ Bridge
+			{ toBridge = \ (Frame bs) -> sendAll sock bs
+			, fromBridge = do bs <- recv sock 2048
+					  return $ Frame bs
 			}
 
-		-- Send first volley, to start the service
-		sendByteString protocol (0,BS.pack [0xde,0xad,0xbe,0xef])
-
-		forkIO $ 
-		   let loop = do
-			hWaitForInput s (-1)
-			bs <- BS.hGetNonBlocking s 1024
-			sendByteString protocol (1,bs)
-			loop 
-		   in loop
-		
-		let loop = do
-			(chanId,bs) <- recvByteString protocol
-			case chanId of
-				0 -> print ("CONTROL:",bs)
-			 	1 -> BS.hPut r bs
-			loop
-		
-		loop
--}

@@ -22,7 +22,7 @@ import Network.LambdaBridge.Bridge
 -- Further, the super-bridge never block on responses, given
 -- the precondition that the sub-bridges also never block on responses.
 
-multiplexBridge :: [Word8] -> Bridge Frame -> IO (Map Word8 (Bridge Frame))
+multiplexBridge :: [Word8] -> Bridge Frame -> IO (Word8 -> Bridge Frame)
 multiplexBridge wds bridge = do
 
 	varMap <- sequence [ do var <- newEmptyMVar 
@@ -45,16 +45,21 @@ multiplexBridge wds bridge = do
 					return ()
 		   Nothing -> return ()
 
-	return $ Map.fromList
-	  [ ( i
-	    , Bridge 
+	let mp = Map.fromList
+		[ ( i
+		  , Bridge 
 			-- Sending blocks, via the super-bridge.
-	  	{ toBridge = \ (Frame bs) -> toBridge bridge (Frame (BS.cons i bs))
+			{ toBridge = \ (Frame bs) -> toBridge bridge (Frame (BS.cons i bs))
 			-- 
-		, fromBridge = takeMVar var
-		}
-	     )
-	  | i <- wds
-	  , let (Just var) = Map.lookup i varFM
-	  ]
+			, fromBridge = takeMVar var
+			}
+		  )
+		| i <- wds
+		, let (Just var) = Map.lookup i varFM
+		]
+
+
+	return $ \ wd -> case Map.lookup wd mp of
+			   Nothing -> error $ "Bad static bridge multiplex: " ++ show wd
+			   Just bridge -> bridge
 
