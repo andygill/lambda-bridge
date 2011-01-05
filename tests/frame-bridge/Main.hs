@@ -54,7 +54,7 @@ main = do
 	bridge_frame_lhs <- debugBridge "bridge_frame_rhs" bridge_frame_lhs
 	
 
-	send <- sendWithARQ bridge_frame_lhs $ Timeout 1 $ \ t o -> 
+	send <- sendWithARQ bridge_frame_lhs $ Limit 1 $ \ t o -> 
 			case o of
 			   Nothing -> min (t * 2) 10
 			   Just a  -> (a * 4 + t) / 2

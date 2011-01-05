@@ -75,7 +75,7 @@ instance Binary Ack where
 		   0x00 -> return $ Ack packId
 		   0xff -> return $ Free packId
 
-sendWithARQ :: Bridge Frame -> Timeout Double -> IO (Link -> IO ())
+sendWithARQ :: Bridge Frame -> Limit -> IO (Link -> IO ())
 sendWithARQ bridge tm = do
 	toSendVar   <- newEmptyMVar :: IO (MVar Link)
 

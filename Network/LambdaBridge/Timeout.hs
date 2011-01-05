@@ -1,4 +1,3 @@
-
 module Network.LambdaBridge.Timeout where
 
 import Control.Concurrent.MVar
@@ -6,17 +5,25 @@ import Control.Exception
 import Data.Time.Clock
 import qualified System.Timeout as T
 
--- | 'Timeout' is a generic way of having adaptive timeouts.
-data Timeout f = Timeout 
-	{ waitFor :: f				-- ^ how long to wait
-	, newTimeout :: f -> Maybe f -> f	-- ^ given an old timeout time, 
+-- | 'Limit' is a generic way of having adaptive timeouts, in (fractions of) seconds.
+data Limit = Limit 
+	{ waitFor :: Float			-- ^ how long to wait, in seconds
+	, newLimit :: Float -> Maybe Float -> Float
+						-- ^ given an old timeout time, 
 						-- and the actual time taken (or timeout)
 						-- how long should we wait?
 	}
 
--- | 'timeout' uses these adaptive timeouts.
-timeout :: Timeout Double -> IO (IO a -> IO (Maybe a))
-timeout (Timeout first fn) = do
+-- | 'boundLimit' creates a Limit with a specific upper bound.
+boundLimit :: Float -> Limit
+boundLimit n = Limit (n / 10) $ \ t o -> 
+	case o of
+	   Nothing -> min (t * 2) n
+	   Just a  -> (a * 4 + t) / 2
+
+-- | 'timeout' uses these Limits to create adaptive timeouts.
+timeout :: Limit -> IO (IO a -> IO (Maybe a))
+timeout (Limit first fn) = do
 	timeVar <- newMVar first
 	return $ \ comp -> do
 	   waitFor <- takeMVar timeVar
