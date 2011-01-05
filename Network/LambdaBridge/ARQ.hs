@@ -60,64 +60,24 @@ instance Binary Data where
 	         bs <- Get.getByteString (fromIntegral sz)
 	         return $ Data packId bs
 
-data Ack = Ack
-		PacketId	-- ^ packet I just got
+data Ack = Ack  PacketId	-- ^ packet I just got
+	 | Free PacketId	-- ^ packet I got and forwarded
 	deriving (Show)
 	
 instance Binary Ack where
 	put (Ack packId) = do
+		putWord8 0x00
+		put packId
+	put (Free packId) = do
+		putWord8 0xff
 		put packId
 
-	get = do packId <- get
-		 return $ Ack packId
+	get = do tag <- getWord8
+		 packId <- get
+		 case tag of
+		   0x00 -> return $ Ack packId
+		   0xff -> return $ Free packId
 
-sendWaitingForAck :: (IO () -> IO (Maybe ())) -> PacketId -> IO ByteString -> IO Ack -> (Data -> IO ())  -> IO ()
-sendWaitingForAck timeout p_id takeToSendVar takeAck putSend  = do
-	bs <- takeToSendVar
-	sendWaitingForAck' timeout p_id (Data p_id bs) takeToSendVar takeAck putSend 
-
-sendWaitingForAck' :: (IO () -> IO (Maybe ())) -> PacketId -> Data -> IO ByteString -> IO Ack -> (Data -> IO ()) -> IO ()
-sendWaitingForAck' timeout p_no p takeToSendVar takeAck putSend = do
-	-- send the packet
-	print "send the packet"
-	putSend p
-	print "sent"
-	
-	-- wait for the awk (ignoring other awks)
-	print "waiting"
-	getAck <- timeout $ let
-		loop = do
-		   print "waiting..."
-		   Ack ack <- takeAck
-		   print $ "found " ++ show ack
-		   if ack == p_no
-			then return ()
-			else loop
-	    in loop
-
-	print $ "waited" ++ show getAck
-
-	-- be careful, http://en.wikipedia.org/wiki/Sorcerer%27s_Apprentice_Syndrome
-	case getAck of
-		-- timeout happened, try send packet again
-	   Nothing -> sendWaitingForAck' timeout p_no p takeToSendVar takeAck putSend 
-		-- done, move on please
-	   Just () -> sendWaitingForAck timeout (p_no + 1) takeToSendVar takeAck putSend 
-
-recvReplyWithAck :: PacketId -> IO Data -> (Ack -> IO ()) -> (ByteString -> IO ()) -> IO ()
-recvReplyWithAck n takeRecvVar putAckVar putHaveRecvVar = do
-		print "recvReplyWithAck"
-		Data packId bs <- takeRecvVar
-		print $ "got packet, sending ack " ++ show packId
-		putAckVar (Ack packId)	--   *always* send an awk
-		print "sent awk"
-		if packId == n then do
-			putHaveRecvVar bs
-			recvReplyWithAck (n + 1) takeRecvVar putAckVar putHaveRecvVar
-		     -- Otherwise, just ignore the (out of order) packet
-		     -- and eventually the client will resend (because there is no Ack)
-		     -- Todo: consider Nack		
-		  else do recvReplyWithAck n takeRecvVar putAckVar putHaveRecvVar
 
 
 
@@ -125,15 +85,111 @@ sendWithARQ :: Bridge Frame -> Timeout Double -> IO (BS.ByteString -> IO ())
 sendWithARQ bridge tm = do
 	toSendVar   <- newEmptyMVar :: IO (MVar ByteString)
 
-	timeout' <- timeout tm
+	fastTimeout <- timeout tm
+	slowTimeout <- timeout tm
+	let getAck    = liftM fromFrame $ fromBridge bridge
+	let putData   = toBridge bridge . toFrame
+
+	let start n = do
+		bs <- takeMVar toSendVar
+		ready (Data n bs)
+
+	    ready dat@(Data n bs) = do
+		putData dat
+		res <- fastTimeout $ 
+		  let loop = do
+			ack <- getAck
+			case ack of
+			  -- only accept ack's with the correct pid's
+			  Ack pid  | pid == n -> return $ ack
+			  Free pid | pid == n -> return $ ack
+			  _ -> loop
+		  in loop
+		case res of
+		  Just (Ack _)  -> wait n
+		  Just (Free _) -> start (n+1)
+		  Nothing       -> ready dat
+
+	    wait n = do
+		res <- slowTimeout $ 
+		  let loop = do
+			ack <- getAck
+			case ack of
+			  -- only accept ack's with the correct pid's
+			  Free pid | pid == n -> return $ ack
+			  _ -> loop
+		  in loop
+		case res of
+		  Just (Free _) -> start (n+1)
+				-- Assume that we just missed the packet
+		  Nothing       -> ping (n+1)
+		
+	    ping n = do
+		putData (Data n BS.empty)
+		res <- slowTimeout $ 
+		  let loop = do
+			ack <- getAck
+			case ack of
+			  -- only accept ack's with the correct pid's
+			  Ack pid  | pid == n -> return $ ack
+			  Free pid | pid == n -> return $ ack
+			  _ -> loop
+		  in loop
+		case res of
+			-- No room yet, so wait
+		  Just (Ack _)  -> wait n
+			-- Finally! got space
+		  Just (Free _) -> start (n+1)
+		  Nothing       -> ping n
+		
+		
+{-		
+
+	let sendWaitingForAck :: PacketId -> IO ByteString -> IO Ack -> (Data -> IO ())  -> IO ()
+	    sendWaitingForAck  p_id takeToSendVar takeAck putSend  = do
+		bs <- takeToSendVar
+		sendWaitingForAck'  p_id (Data p_id bs) takeToSendVar takeAck putSend 
+
+	    sendWaitingForAck' :: PacketId -> Data -> IO ByteString -> IO Ack -> (Data -> IO ()) -> IO ()
+	    sendWaitingForAck'  p_no p takeToSendVar takeAck putSend = do
+		-- send the packet
+		print "send the packet"
+		putSend p
+		print "sent"
 	
+		-- wait for the awk (ignoring other awks)
+		print "waiting"
+		getAck <- timeout' $ let
+			loop = do
+		   		print "waiting..."
+		   		Ack ack <- takeAck
+		   		print $ "found " ++ show ack
+		   		if ack == p_no
+					then return ()
+					else loop
+	    	  in loop
+
+		print $ "waited" ++ show getAck
+
+	-- be careful, http://en.wikipedia.org/wiki/Sorcerer%27s_Apprentice_Syndrome
+		case getAck of
+		-- timeout happened, try send packet again
+	   		Nothing -> sendWaitingForAck'  p_no p takeToSendVar takeAck putSend 
+		-- done, move on please
+	   		Just () -> sendWaitingForAck  (p_no + 1) takeToSendVar takeAck putSend 
+
+
+-}
+{-
 	-- This waits for awk's when sending packets
 	forkIO $ sendWaitingForAck 
-				timeout'
 				0
 				(takeMVar toSendVar)
 				(liftM fromFrame $ fromBridge bridge)
 				(toBridge bridge . toFrame)
+-}
+
+	forkIO $ start 0
 
 	return $ putMVar toSendVar 
 
@@ -141,62 +197,54 @@ recvWithARQ :: Bridge Frame -> IO (IO BS.ByteString)
 recvWithARQ bridge = do
 	haveRecvVar <- newEmptyMVar :: IO (MVar ByteString)
 
-		-- This receives bits over the connection
---	forkIO $ recvBits    (fromBridge bridge)
---			     (putMVar recvVar)
---			     (putMVar ackVar)
+	let getData  = liftM fromFrame $ fromBridge bridge
+	let putAck   = toBridge bridge . toFrame
+
+	let start :: PacketId -> IO ()
+	    start n = do
+		dat <- getData
+		recv'd n dat
+
+	    recv'd :: PacketId -> Data -> IO ()
+	    recv'd n (Data m bs) = 
+		if (m /= n) then do
+			putAck (Free n) -- send a free, because this packet is already here
+			start n
+		      else do	-- m == n
+			pushed <- tryPutMVar haveRecvVar bs
+			if pushed then do
+				putAck (Free n) -- send a free, because we've got and recieved the packet
+				start (n+1)	-- and wait for the next packet
+			      else do
+				-- Mvar was full, so blocked
+				putAck (Ack n) 	-- send a ack, becase we *did* get the packet, even
+						-- though we can't accept it yet.
+
+				sync <- newEmptyMVar
+				forkIO $ do
+					putMVar haveRecvVar bs
+					putAck (Free m)
+					putMVar sync ()
+				blocked n sync
+
+
+	    blocked :: PacketId -> MVar () -> IO ()
+	    blocked n sync = do
+		Data m bs <- getData
+		s <- tryTakeMVar sync
+		case s of
+		  -- Previous free sent, so can rejoin the start path, for a new packet
+		  Just () -> recv'd (n+1) (Data m bs)
+		  -- 'free' packet not yet sent
+		  Nothing -> do
+			if m == n then do
+				putAck (Ack n)
+			      else do
+				return ()		-- send nothing; must be next packet
+			blocked n sync
 
 	-- This sends acks
-	forkIO $ recvReplyWithAck 0 
-				(liftM fromFrame $ fromBridge bridge)
-				(toBridge bridge . toFrame)
-				(putMVar haveRecvVar)
+	forkIO $ start 0 
 
 	return $ takeMVar haveRecvVar
-
--- Set up an end to end to test things.
-
-	
-main :: IO ()
-main = do
-	bridge_byte_lhs0 <- stubBridge $ [] -- cycle [Byte n | n <- [0..255]]
-
-	(bridge_byte_lhs,bridge_byte_rhs) <- pipeBridge :: IO (Bridge Byte, Bridge Byte)	
-
-	let u = def { loseU = 0.01, dupU = 0.001, mangleU = 0.005, mangler = \ g (Byte a) -> 
-									let (a',_) = random g
-									in Byte (fromIntegral (a' :: Int) + a) }
-	bridge_byte_lhs <- unreliableBridge u def bridge_byte_lhs
-	bridge_byte_rhs <- unreliableBridge u def bridge_byte_rhs
-
---	bridge_byte_lhs <- debugBridge "bridge_byte_lhs" bridge_byte_lhs
---	bridge_byte_rhs <- debugBridge "bridge_byte_rhs" bridge_byte_rhs
-	
-	bridge_frame_lhs <- frameProtocol 0.01 bridge_byte_lhs
-	bridge_frame_rhs <- frameProtocol 0.01 bridge_byte_rhs
-
-	send <- sendWithARQ bridge_frame_lhs $ Timeout 1 $ \ t o -> 
-			case o of
-			   Nothing -> min (t * 2) 10
-			   Just a  -> (a * 4 + t) / 2
-	
-	recv <- recvWithARQ bridge_frame_rhs
-
-	forkIO $ let loop n = do
-			send (toStr $ show (n :: Int))
-			loop (succ n)
-		 in loop 0
-
-	forkIO $ let loop = do
-			msg <- recv
-			print msg
-			loop
-		 in loop
-
-	threadDelay (1000 * 1000 * 1000)
-
-	return ()
-   where	
-	toStr :: String -> BS.ByteString
-	toStr = BS.pack . map (fromIntegral . ord)
 

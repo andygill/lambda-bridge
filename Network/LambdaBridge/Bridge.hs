@@ -15,8 +15,7 @@ import Data.Binary.Put as Put
 import qualified Data.ByteString.Lazy as LBS
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-
-
+import Data.Time.Clock
 import Control.Exception as Exc
 
 -- | A 'Bridge' is a bidirectional connection to a specific remote API.
@@ -53,7 +52,10 @@ instance Show Byte where
 
 -- An example of a 'Bridge (of) Frame Frame' is UDP.
 
-newtype Frame = Frame BS.ByteString deriving (Show)
+newtype Frame = Frame BS.ByteString 
+instance Show Frame where
+   show (Frame wds) = "Frame " ++ show [ Byte w | w <- BS.unpack wds ]
+
 
 -- | A way of turning a Frame into its contents, using the 'Binary' class.
 -- This may throw an async exception.
@@ -64,10 +66,10 @@ fromFrame (Frame fs) = decode (LBS.fromChunks [fs])
 toFrame :: (Binary a) => a -> Frame
 toFrame a = Frame $ BS.concat $ LBS.toChunks $ encode a
 
--- | ''unreliableBridge'' is a way of making a 'Bridge' less
+-- | ''realisticBridge'' is a way of making a 'Bridge' less
 -- reliable, for testing purposes.
-unreliableBridge :: Unreliable msg -> Unreliable msg -> Bridge msg -> IO (Bridge msg)
-unreliableBridge send recv sock = do
+realisticBridge :: (Show msg) => Realistic msg -> Realistic msg -> Bridge msg -> IO (Bridge msg)
+realisticBridge send recv sock = do
 	let you :: Float -> IO Bool
 	    you f = do
 		r <- randomIO
@@ -79,9 +81,17 @@ unreliableBridge send recv sock = do
 			g <- newStdGen
 			return $ mangle g a
 		     else return a 
+	tm <- getCurrentTime
+	tmVar <- newMVar tm
 
   	return $ Bridge
 	  { toBridge = \ a -> do
+		tm0 <- takeMVar tmVar	-- old char time
+		tm1 <- getCurrentTime	-- current time
+		let pause = pauseU send - realToFrac (tm1 `diffUTCTime` tm0)
+		if pause <= 0 then return () else do
+		   threadDelay (floor (pause * 1000 * 1000))
+		   return ()
 		b <- you (loseU send)
 		if b then return () else do -- ignore if you "lose" the message.
 		  a <- optMangle (mangleU send) (mangler send) a
@@ -91,21 +101,25 @@ unreliableBridge send recv sock = do
 		  	toBridge sock a			
 		       else do
 	                toBridge sock a
+		tm <- getCurrentTime
+		putMVar tmVar tm
+		return ()
 	  , fromBridge = fromBridge sock
 	  }
 
--- |  ''Unreliable'' is the configuration for ''unreliableBridge''.
-data Unreliable a = Unreliable
+-- |  ''Realistic'' is the configuration for ''realisticBridge''.
+data Realistic a = Realistic
 	{ loseU 	:: Float	-- ^ lose an 'a'
 	, dupU 		:: Float	-- ^ dup an 'a'
 	, execptionU 	:: Float	-- ^ throw exception instead
+	, pauseU	:: Float	-- ^ what is the pause between things
 	, mangleU 	:: Float	-- ^ mangle an 'a'
 	, mangler :: forall g . (RandomGen g) => g -> a -> a
 	}
 
--- | default instance of 'Unreliable', which is completely reliable.
-instance Default (Unreliable a) where
-	def = Unreliable 0 0 0 0 (\ g a -> a)
+-- | default instance of 'realistic', which is completely reliable.
+instance Default (Realistic a) where
+	def = Realistic 0 0 0 0 0 (\ g a -> a)
 
 -- | 'debugBridge' outputs to the stderr debugging messages
 -- about what datum is getting send where.
@@ -126,7 +140,7 @@ debugBridge name bridge = do
 			count <- takeMVar recvCounter
 			putMVar recvCounter (succ count)
 			putStrLn $  name ++ ":fromBridge<" ++ show count ++ ">"
-			a <- fromBridge bridge `Exc.catch` \ (e :: SomeException) -> do { print e ; fail "X" }
+			a <- fromBridge bridge `Exc.catch` \ (e :: SomeException) -> do { print e ; throw e }
 			putStrLn $  name ++ ":fromBridge<" ++ show count ++ "> (" ++ show a ++ ")"
 			return a
 		}

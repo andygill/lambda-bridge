@@ -101,8 +101,8 @@ reading character for the 'Bridge Byte', and the 'Bridge Byte' itself.
 
 -}
 
-frameProtocol :: Double -> Bridge Byte -> IO (Bridge Frame)
-frameProtocol tmOut byte_bridge = do
+frameProtocol :: Bridge Byte -> IO (Bridge Frame)
+frameProtocol byte_bridge = do
 	let tag = 0xf1 :: Word8
 
 	-----------------------------------------------------------------------------
@@ -134,29 +134,17 @@ frameProtocol tmOut byte_bridge = do
 
 	recving <- newEmptyMVar
 
-	-- TODO: these three defs can be folded
 	let read = do Byte wd <- fromBridge byte_bridge
 		      return wd
 
-	    -- timeout in microseconds
-	let tmOut' :: Int
-	    tmOut' = floor (tmOut * 1000 * 1000)
-
-	-- This is quite expensive of reading each character.
-	let step = do
-		wd' <- timeout tmOut' read 
-		case wd' of
-		  Nothing -> fail ("step timed out")
-		  Just wd -> return wd
-	
 	let checkCRC xs = crc (0x1021 :: Word16) 0xffff xs == 0 
 
 	let findHeader :: IO ()
 	    findHeader = do
 		wd0 <- read	-- the first byte of a packet can wait as long as you like
-		wd1 <- step
-		wd2 <- step
-		wd3 <- step
+		wd1 <- read
+		wd2 <- read
+		wd3 <- read
 		findHeader' wd0 wd1 wd2 wd3
 		
 	    -- you already have the first byte
@@ -167,18 +155,18 @@ frameProtocol tmOut byte_bridge = do
 		  && fromIntegral wd1 <= maxFrameSize 
 		  && checkCRC [wd0,wd1,wd2,wd3] = findPayload (fromIntegral wd1)
 		| otherwise = do
-			wd4 <- step
+			wd4 <- read
 	    		findHeader' wd1 wd2 wd3 wd4
 
 	    readWithPadding :: IO Word8
 	    readWithPadding = do
-		wd1 <- step
+		wd1 <- read
 
 		if wd1 == tag then 
-			do wd2 <- step
+			do wd2 <- read
 			   if wd2 == 0xff then return wd1 else do
-				wd3 <- step
-				wd4 <- step
+				wd3 <- read
+				wd4 <- read
 				findHeader' wd1 wd2 wd3 wd4
 				fail "trampoline (hack to clear stack)"
 		    else do
@@ -240,11 +228,11 @@ main = do
 	let u = def { loseU = 0.01, dupU = 0.01, mangleU = 0.01, mangler = \ g (Byte a) -> 
 									let (a',_) = random g
 									in Byte (fromIntegral (a' :: Int) + a) }
-	bridge_byte2 <- unreliableBridge def def bridge_byte0
+	bridge_byte2 <- realisticBridge def def bridge_byte0
 
 --	sequence_ [ toBridge bridge_byte' x | x <- [0..255]]
 
-	bridge_frame <- frameProtocol 0.01 bridge_byte2
+	bridge_frame <- frameProtocol bridge_byte2
 
 	forkIO $ do
 		sequence [ toBridge bridge_frame $ Frame (toStr $ "Frame: " ++ show i ++ " " ++ [' '..'~'] ++ [chr 0xf1])
