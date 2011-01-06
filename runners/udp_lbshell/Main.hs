@@ -81,6 +81,8 @@ main = do
 
 	recvARQ <- recvWithARQ bridge_frame_0x33
 
+--	(send,recv) <- simple_board_connect ["./dist/build/lb_udp/lb_udp", host, "9237", "UDP"]
+
 	let loop 10 = return ()
 	    loop n = do
 		link <- recvARQ
@@ -92,59 +94,4 @@ main = do
 
 	loop 0
 
-{-
-	-- Send first volley, to start the service
-	sendARQ (Link $ BS.pack [])
-
-	return ()
-
-	forever $ do
-		link <- recvARQ
-		print link
-	
--}
-{-
-
-	protocol <- arqProtocol $ ARQ_Options
-		{ toSocket	  = sendAll sock
-		, fromSocket	  = do
-			(bs,from) <- recvFrom sock 2048
-			-- Connect *once*, if Datagram
-			conn <- tryTakeMVar connVar
-			case conn of
-			  Just f -> connect sock from
-			  Nothing -> return ()			
-			return bs
-		, transmitFailure = Nothing
-		, receiveFailure  = Nothing
-		}
-
-
-	putStrLn $ "waiting for remote stream(s)"
-
-	(chanId,bs) <- recvByteString protocol
-
-	putStrLn $ "invoking lambda bridge"
-
-	(send,recv) <- simple_board_connect args
-
-	putStrLn $ "connected."
-	
-	let loop = do
-		(chanId,bs) <- recvByteString protocol
-		case chanId of
-			0 -> print ("CONTROL:",bs)
-		 	1 -> BS.hPutStr send bs
-		loop
-
-	forkIO loop
-
-	let loop = do
-		hWaitForInput recv (-1)
-		bs <- BS.hGetNonBlocking recv 1024
-		sendByteString protocol (1,bs)
-		loop 
-
-	loop
--}
 	return ()
