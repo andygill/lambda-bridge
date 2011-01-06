@@ -2,6 +2,7 @@ module Network.LambdaBridge.Driver where
 
 import System.Environment
 import GHC.IO.Handle.FD
+import Control.Concurrent
 import System.IO 
 import Control.Monad
 import Data.Char(isDigit)
@@ -42,7 +43,11 @@ bundle_driver name cont = do
 
 bridge_frame_driver :: String -> Limit -> ([String] -> IO (Bridge Frame)) -> IO ()
 bridge_frame_driver name limit bridge_fn = bundle_driver name $ \ args ins out -> do
+
 	bridge_frame <- bridge_fn args
+
+	bridge_frame <- debugBridge "bridge_frame_driver" bridge_frame
+
 	bridge_frames <- multiplexBridge [0x33,0x34] bridge_frame
 
 	let bridge_frame_0x33 = bridge_frames 0x33
@@ -55,37 +60,37 @@ bridge_frame_driver name limit bridge_fn = bundle_driver name $ \ args ins out -
 	-- Send first volley, to start the service
 	sendARQ (Link $ BS.pack [])
 
-	return ()
+	print (ins,out)
 
-	forever $ do
-		link <- recvARQ
-		print link
+	let hGetSome n = do
+	 	b   <- BS.hGet (head ins) 1
+		bss <- get (n - 1)
+		return (BS.append b (BS.concat bss))
+	      where
+		get 0 = return []
+		get n = do bs <- BS.hGetNonBlocking (head ins) n
+			   if BS.null bs 
+				then return []
+				else do bss <- get (n - BS.length bs)
+					return (bs:bss)
 
-
-{-
-
-
-
-
-		forkIO $ 
-		   let loop = do
-			hWaitForInput s (-1)
-			bs <- BS.hGetNonBlocking s 1024
-			sendByteString protocol (1,bs)
-			loop 
-		   in loop
+	let reader = do
+		bs <- hGetSome 128	-- 128 is the size of our 'packets'
+		if BS.null bs
+		  then return ()
+		  else do
+			print ("sending",bs)
+			sendARQ (Link bs)
+			reader
 		
-		let loop = do
-			(chanId,bs) <- recvByteString protocol
-			case chanId of
-				0 -> print ("CONTROL:",bs)
-			 	1 -> BS.hPut r bs
-			loop
-		
-		loop
--}
-		
-{-
-driver_timeout :: Timeout Float
-driver_timeout 
--}
+	forkIO $ reader
+
+	let writer = do
+		hPutStrLn (head out) "Hello"
+		threadDelay (1000 * 100)
+		(Link bs) <- recvARQ
+		print ("recv",bs)
+		BS.hPut (head out) bs
+		writer
+
+	writer `catch` \ e -> print ("Exc",e)

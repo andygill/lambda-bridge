@@ -12,6 +12,7 @@ import Data.Char as Char
 import Network.Socket hiding (send, sendTo, recv, recvFrom)
 import Network.Socket.ByteString
 import Control.Concurrent
+import Control.Monad
 import Control.Concurrent.MVar
 import System.Timeout 
 import System.Random
@@ -20,10 +21,14 @@ import System.Environment
 import Prelude hiding (getContents)
 
 import Network.LambdaBridge
+import Network.LambdaBridge.Bridge
+import Network.LambdaBridge.Timeout
+import Network.LambdaBridge.Multiplex
 import Network.LambdaBridge.ARQ
 
-main = do return ()
-{-
+-- ./Main 9237 <hostname>
+
+main = do 
 	args <- getArgs
 	putStrLn $ "Seting up to a udp-shell lambda bridge using " ++ show args 
 	let (port:style:_) = args
@@ -52,6 +57,53 @@ main = do return ()
 			listen sock 1
 			(sock2,_) <- accept sock
 			return sock2
+
+
+	let bridge_frame = Bridge
+		{ toBridge = \ (Frame bs) -> sendAll sock bs
+		, fromBridge = do
+			(bs,from) <- recvFrom sock 2048
+			-- Connect *once*, if Datagram
+			conn <- tryTakeMVar connVar
+			case conn of
+			  Just f -> connect sock from
+			  Nothing -> return ()			
+			return $ Frame bs
+		}
+
+	-- This needs driven by the command line arguments
+	bridge_frames <- multiplexBridge [0x33,0x34] bridge_frame
+
+	let bridge_frame_0x33 = bridge_frames 0x33
+	let bridge_frame_0x34 = bridge_frames 0x34
+
+	sendARQ <- sendWithARQ bridge_frame_0x34 $ boundLimit 0.3
+
+	recvARQ <- recvWithARQ bridge_frame_0x33
+
+	let loop 10 = return ()
+	    loop n = do
+		link <- recvARQ
+		print link
+		sendARQ link
+		case link of
+		   Link bs | BS.length bs == 0 -> loop (n + 1)
+		   _ -> loop n
+
+	loop 0
+
+{-
+	-- Send first volley, to start the service
+	sendARQ (Link $ BS.pack [])
+
+	return ()
+
+	forever $ do
+		link <- recvARQ
+		print link
+	
+-}
+{-
 
 	protocol <- arqProtocol $ ARQ_Options
 		{ toSocket	  = sendAll sock
@@ -95,3 +147,4 @@ main = do return ()
 
 	loop
 -}
+	return ()

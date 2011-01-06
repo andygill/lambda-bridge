@@ -10,6 +10,8 @@ module Main where
 import Network.LambdaBridge
 import System.IO
 import Control.Concurrent
+import Control.Monad
+
 
 --host = "rome"
 host = "127.0.0.1" --- "localhost", "127.0.0.1", -
@@ -19,16 +21,15 @@ main = do
 	(send,recv) <- simple_board_connect ["./dist/build/lb_udp/lb_udp", host, "9237", "UDP"]
 
 	let loop n = do
-		hPutStrLn send $ take 900 $ (cycle $ "Hello, World!: " ++ show n)
+		hPutStrLn send $ "Message " ++ show n ++ "!"
 		hFlush send
-		str <- hGetLine recv
---		putStrLn str
-		if (n `mod` 1 == 0) then 
-			putStrLn str else return ()
---		threadDelay 100
-		loop (n + 1)
+		loop (n+1)
 
-	loop 0
+	forkIO $ loop 0
+
+	forever $ do 
+		str <- hGetLine recv
+		putStrLn str
 
 	putStrLn "Exiting lambda bridge"
 
