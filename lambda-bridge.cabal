@@ -43,12 +43,12 @@ Library
 
 Executable lb_udp
    Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default, containers
-   Hs-Source-Dirs: 	.  drivers/udp
+   Hs-Source-Dirs: 	.  drivers/haskell/udp
    Main-Is: Main.hs
 
 Executable lb_cat
    Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default, containers
-   Hs-Source-Dirs: 	.  drivers/cat
+   Hs-Source-Dirs: 	.  drivers/haskell/cat
    Main-Is: Main.hs
 
 
