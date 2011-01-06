@@ -63,9 +63,9 @@ Executable udp_lbshell
 
 -- And tests
 
-Executable haskell-test1
+Executable haskell-cat
    Build-Depends: 	base >= 4 && < 5, random, time, data-default
-   Hs-Source-Dirs: 	.  examples/haskell-test1
+   Hs-Source-Dirs: 	.  examples/haskell/cat
    C-Sources:           connect/lb_board_connect.c
    Include-Dirs:        connect
    Main-Is: Main.hs

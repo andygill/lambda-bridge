@@ -12,9 +12,11 @@ Directory Structure
  * connect -- C implementation of lb_board_connect.
  
  * examples -- Examples of using some generic/toy bridges.
+    haskell-cat -- Example of calling the cat driver.
 
  * runners -- programs/applications that *use* the lambda-bridge
     * udp_lbshell -- Allows the remote invocation of lambda-bridge commands.
+    * stdio_lbshell -- Allows a lambda bridge driver to be used via stdio and the UNIX shell.
 
 In order to use the lambda bridge, you need to set the PATH environment variable, 
 to find the bridges. For example
