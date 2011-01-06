@@ -46,6 +46,12 @@ Executable lb_udp
    Hs-Source-Dirs: 	.  drivers/udp
    Main-Is: Main.hs
 
+Executable lb_cat
+   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default, containers
+   Hs-Source-Dirs: 	.  drivers/cat
+   Main-Is: Main.hs
+
+
 -- And the runners
 
 Executable udp_lbshell
