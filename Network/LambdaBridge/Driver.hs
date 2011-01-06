@@ -92,5 +92,16 @@ bridge_frame_driver name limit bridge_fn = bundle_driver name $ \ args ins out -
 		print ("recv",bs)
 		BS.hPut (head out) bs
 		writer
-
+		
+		
 	writer `catch` \ e -> print ("Exc",e)
+
+-- | 'bridge_byte_driver' creates a driver from the 'Bridge Byte' abstraction.
+
+bridge_byte_driver :: String -> Limit -> ([String] -> IO (Bridge Byte)) -> IO ()
+bridge_byte_driver name limit bridge_fn = bundle_driver name $ \ args ins out -> do
+	-- create the byte bridge
+	bridge_byte <- bridge_fn args
+	-- and return the higher level frame protocol
+	frameProtocol bridge_byte
+
