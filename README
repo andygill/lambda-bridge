@@ -21,15 +21,8 @@ Directory Structure
 In order to use the lambda bridge, you need to set the PATH environment variable, 
 to find the bridges. For example
 
-% export PATH=$PATH:`pwd`/bridges/bin
-or
-% export PATH=$PATH:`pwd`/bridges/bin:`pwd`/dist/build/haskell-test2-bridge
+% export PATH=$PATH:`pwd`/dist/build/lb_cat
 
-If you type
-
-% make bridges
-
-Then the package will attempt to build the bridges (and put them in to bridges/bin)
 
 
 
