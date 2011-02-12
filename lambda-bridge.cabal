@@ -25,7 +25,7 @@ Flag example
   Description: build the single example
 
 Library
-  Build-Depends:   base >= 4 && < 5, binary, bytestring, random, time, data-default, containers
+  Build-Depends:   base >= 4 && < 5, binary, bytestring, random, time, data-default, containers, stm
   Exposed-Modules:     Network.LambdaBridge
                        Network.LambdaBridge.ARQ
                        Network.LambdaBridge.Bridge
@@ -42,12 +42,12 @@ Library
 -- Now the drivers.
 
 Executable lb_udp
-   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default, containers
+   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default, containers, stm
    Hs-Source-Dirs: 	.  drivers/haskell/udp
    Main-Is: Main.hs
 
 Executable lb_cat
-   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default, containers
+   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default, containers, stm
    Hs-Source-Dirs: 	.  drivers/haskell/cat
    Main-Is: Main.hs
 
@@ -55,7 +55,7 @@ Executable lb_cat
 -- And the runners
 
 Executable udp_lbshell
-   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default, containers
+   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default, containers, stm
    Hs-Source-Dirs: 	.  runners/udp_lbshell
    C-Sources:           connect/lb_board_connect.c
    Include-Dirs:        connect
@@ -78,13 +78,13 @@ Executable haskell-udp
    Main-Is: Main.hs
 
 Executable haskell-test3
-   Build-Depends: 	base >= 4 && < 5, binary, bytestring, random, time, data-default, containers
+   Build-Depends: 	base >= 4 && < 5, binary, bytestring, random, time, data-default, containers, stm
    Hs-Source-Dirs: 	.  examples/haskell-test3
    C-Sources:           connect/lb_board_connect.c
    Include-Dirs:        connect
    Main-Is: Main.hs
 
 Executable frame-bridge
-   Build-Depends: 	base >= 4 && < 5, binary, bytestring, random, time, data-default, containers
+   Build-Depends: 	base >= 4 && < 5, binary, bytestring, random, time, data-default, containers, stm
    Hs-Source-Dirs: 	. tests/frame-bridge
    Main-Is: Main.hs

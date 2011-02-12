@@ -25,17 +25,19 @@ import Data.Char
 
 import qualified Data.Map as Map
 
+import Data.Time.Clock
+
 -- Set up an end to end to test things.
 
 main :: IO ()
 main = do
-	(bridge_byte_lhs,bridge_byte_rhs) <- pipeBridge :: IO (Bridge Byte, Bridge Byte)	
+	(bridge_byte_lhs,bridge_byte_rhs) <- pipeBridge 0.01 :: IO (Bridge Byte, Bridge Byte)	
 
 	let u = def { pauseU = 0.001
 		    , loseU = 0.001, dupU = 0.001, mangleU = 0.005, mangler = \ g (Byte a) -> 
 									let (a',_) = random g
 									in Byte (fromIntegral (a' :: Int) + a) }
-	bridge_byte_lhs <- realisticBridge u def bridge_byte_lhs
+--	bridge_byte_lhs <- realisticBridge u def bridge_byte_lhs
 --	bridge_byte_rhs <- realisticBridge u def bridge_byte_rhs
 
 --	bridge_byte_lhs <- debugBridge "bridge_byte_lhs" bridge_byte_lhs
@@ -79,4 +81,3 @@ main = do
    where	
 	toStr :: String -> Link
 	toStr = Link . BS.pack . map (fromIntegral . ord)
-

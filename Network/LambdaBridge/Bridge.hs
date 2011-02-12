@@ -17,6 +17,9 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Time.Clock
 import Control.Exception as Exc
+import Control.Monad
+import Control.Concurrent.STM
+import Control.Concurrent.STM.TVar
 
 -- | A 'Bridge' is a bidirectional connection to a specific remote API.
 -- There are many different types of Bridges in the lambda-bridge API.
@@ -167,22 +170,43 @@ loopbackBridge = do
 		}
 
 -- | 'pipeBridge' create two ends of a polymorphic 'Bridge'.
+-- This link is decoupled, in the sense that if no-one is listening,
+-- then the element in transport gets dropped.
 
-pipeBridge :: IO (Bridge a, Bridge a)
-pipeBridge = do
-	sending <- newEmptyMVar 
-	recving <- newEmptyMVar
+pipeBridge :: Float -> IO (Bridge a, Bridge a)
+pipeBridge delay = do
+        sending' <- atomically $ newTVar Nothing
+        recving' <- atomically $ newTVar Nothing
+
+        sending <- newEmptyMVar 
+        recving <- newEmptyMVar
+
+
+        -- We want the sending process to *wait* until we are ready to send
+        let transport from to = do
+                v <- takeMVar from
+                threadDelay (floor (delay * 1000 * 1000))
+                atomically $ writeTVar to $ Just v
+                transport from to
+
+        forkIO $ transport sending sending'
+        forkIO $ transport recving recving'
+
+        let recv scratch = atomically $ do
+                        optV <- readTVar scratch
+                        case optV of
+                          Nothing -> retry
+                          Just v -> do
+                                writeTVar scratch Nothing
+                                return v
+
 	let b1 = Bridge
-		{ toBridge = \ a -> do
-			putMVar sending a
-		, fromBridge = do
-			takeMVar recving
+		{ toBridge = putMVar sending
+		, fromBridge = recv recving'
 		}
 	let b2 = Bridge
-		{ toBridge = \ a -> do
-			putMVar recving a
-		, fromBridge = do
-			takeMVar sending
+		{ toBridge = putMVar recving
+		, fromBridge = recv sending'
 		}
 
 	return (b1,b2)
