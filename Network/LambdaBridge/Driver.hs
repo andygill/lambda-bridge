@@ -12,6 +12,7 @@ import qualified Data.ByteString as BS
 import Network.LambdaBridge.Bridge
 import Network.LambdaBridge.Timeout
 import Network.LambdaBridge.Multiplex
+import Network.LambdaBridge.Frame
 import Network.LambdaBridge.ARQ
 
 
@@ -39,7 +40,8 @@ bundle_driver name cont = do
 	  _ -> error $ "bad (or unsupported) argument format for driver (" ++ name ++ "): " 
 			++ show args ++ "\n" ++ "(use 'board_connect' to call this driver)"
 	
--- | 'bridge_frame_driver' creates a driver from the 'Bridge Frame' abstraction.
+-- | 'bridge_frame_driver' creates a driver from the 'Bridge Frame' abstraction,
+-- for example a UDP implementation over RJ45.
 
 bridge_frame_driver :: String -> Limit -> ([String] -> IO (Bridge Frame)) -> IO ()
 bridge_frame_driver name limit bridge_fn = bundle_driver name $ \ args ins out -> do
@@ -96,12 +98,10 @@ bridge_frame_driver name limit bridge_fn = bundle_driver name $ \ args ins out -
 		
 	writer `catch` \ e -> print ("Exc",e)
 
--- | 'bridge_byte_driver' creates a driver from the 'Bridge Byte' abstraction.
-{-
+-- | 'bridge_byte_driver' creates a driver from the 'Bridge Byte' abstraction,
+-- for example an RS-232.
 bridge_byte_driver :: String -> Limit -> ([String] -> IO (Bridge Byte)) -> IO ()
-bridge_byte_driver name limit bridge_fn = bundle_driver name $ \ args ins out -> do
-	-- create the byte bridge
+bridge_byte_driver name limit bridge_fn = bridge_frame_driver name limit $ \ args -> do
 	bridge_byte <- bridge_fn args
-	-- and return the higher level frame protocol
-	frameProtocol bridge_byte
--}
+	-- and return the higher level frame protocol	
+        frameProtocol bridge_byte
