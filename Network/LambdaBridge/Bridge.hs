@@ -203,31 +203,56 @@ loopbackBridge = do
 -- This link is decoupled, in the sense that if no-one is listening,
 -- then the element in transport gets dropped.
 
-pipeBridge :: Float -> IO (Bridge a, Bridge a)
-pipeBridge delay = do
-        sending' <- atomically $ newTVar Nothing
-        recving' <- atomically $ newTVar Nothing
+pipeBridge :: (Show a) => Int -> Float -> IO (Bridge a, Bridge a)
+pipeBridge max_len delay = do
+        sending' <- atomically $ newTVar []
+        recving' <- atomically $ newTVar []
 
         sending <- newEmptyMVar 
         recving <- newEmptyMVar
 
+        tm <- getCurrentTime
 
         -- We want the sending process to *wait* until we are ready to send
-        let transport from to = do
+        let transport tm0 extra from to = do
                 v <- takeMVar from
-                threadDelay (floor (delay * 1000 * 1000))
-                atomically $ writeTVar to $ Just v
-                transport from to
+                tm1 <- getCurrentTime
+                vs <- atomically $ do
+                        readTVar to
+--                print vs
+                vs_len <- atomically $ do
+                        vs <- readTVar to
+                        let vs_len = length vs
+                        when (vs_len < max_len) $ do
+                                writeTVar to (vs ++ [v])
+                        return vs_len
 
-        forkIO $ transport sending sending'
-        forkIO $ transport recving recving'
+                -- give someone else a shot
+                yield
+
+                let diff :: Float
+                    diff = fromRational (toRational (tm1 `diffUTCTime` tm0))
+
+                let extra' = max (extra + delay - diff) 0
+--                print (extra,delay,diff,extra')
+
+                if extra' > 0.02 || vs_len + 1 == max_len then do
+--                   print ("EXTRA'",extra')
+                   threadDelay (floor (extra' * 1000 * 1000))
+                   transport tm1 0 from to
+                                else do
+                   transport tm1 extra' from to                                                
+                        
+
+        forkIO $ transport tm 0 sending sending'
+        forkIO $ transport tm 0 recving recving'
 
         let recv scratch = atomically $ do
-                        optV <- readTVar scratch
-                        case optV of
-                          Nothing -> retry
-                          Just v -> do
-                                writeTVar scratch Nothing
+                        vs <- readTVar scratch
+                        case vs of
+                          [] -> retry
+                          (v:vs) -> do
+                                writeTVar scratch vs
                                 return v
 
 	let b1 = Bridge

@@ -31,13 +31,14 @@ import Data.Time.Clock
 
 main :: IO ()
 main = do
-	(bridge_byte_lhs,bridge_byte_rhs) <- pipeBridge 0.01 :: IO (Bridge Byte, Bridge Byte)	
+                                                -- 10 bits at 9600 baud
+	(bridge_byte_lhs,bridge_byte_rhs) <- pipeBridge 16 (10/9600) :: IO (Bridge Byte, Bridge Byte)	
 
 	let u = def { pauseU = 0.001
-		    , loseU = 0.001, dupU = 0.001, mangleU = 0.005, mangler = \ g (Byte a) -> 
+		    , loseU = 0.000, dupU = 0.000, mangleU = 0.01, mangler = \ g (Byte a) -> 
 									let (a',_) = random g
 									in Byte (fromIntegral (a' :: Int) + a) }
---	bridge_byte_lhs <- realisticBridge u def bridge_byte_lhs
+	bridge_byte_lhs <- realisticBridge u u bridge_byte_lhs
 --	bridge_byte_rhs <- realisticBridge u def bridge_byte_rhs
 
 --	bridge_byte_lhs <- debugBridge "bridge_byte_lhs" bridge_byte_lhs
@@ -53,7 +54,7 @@ main = do
 	let bridge_frame_rhs = bridges_frame_rhs 0x99
 
 
-	bridge_frame_lhs <- debugBridge "bridge_frame_rhs" bridge_frame_lhs
+--	bridge_frame_lhs <- debugBridge "bridge_frame_lhs" bridge_frame_lhs
 	
 
 	send <- sendWithARQ bridge_frame_lhs $ Limit 1 $ \ t o -> 
@@ -63,19 +64,23 @@ main = do
 	
 	recv <- recvWithARQ bridge_frame_rhs
 
-	forkIO $ let loop n = do
+        stop <- newEmptyMVar
+
+	forkIO $ let loop 1000 = putMVar stop ()
+	             loop n = do
 			send (toStr $ show (n :: Int))
 			loop (succ n)
 		 in loop 0
 
 	forkIO $ let loop = do
 			msg <- recv
-			print msg
-			threadDelay (100 * 1000)
+			print ("MSG",msg)
+--			threadDelay (100 * 1000)
 			loop
 		 in loop
 
-	threadDelay (1000 * 1000 * 1000)
+        takeMVar stop
+--	threadDelay (1000 * 1000 * 1000)
 
 	return ()
    where	
