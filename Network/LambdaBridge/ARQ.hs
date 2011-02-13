@@ -115,7 +115,8 @@ sendWithARQ bridge tm = do
 		  in loop
 		case res of
 		  Just (Free _) -> start (n+1)
-				-- Assume that we just missed the packet
+				-- Assume that we just missed the free,and 
+				-- revert to trying the next packet, with timeout.
 		  Nothing       -> ping (n+1)
 		
 	    ping n = do
@@ -154,8 +155,11 @@ recvWithARQ bridge = do
 
 	    recv'd :: PacketId -> Data -> IO ()
 	    recv'd n (Data m bs) = 
+                -- TODO: figure out what to do if n < m
+                -- which is when the protocol has gone badly wrong (REBOOT NEEDED?)
+                -- Also, make sure the loop round works
 		if (m /= n) then do
-			putAck (Free n) -- send a free, because this packet is already here
+			putAck (Free m) -- send a free, because this packet is already here
 			start n
 		      else do	-- m == n
 			pushed <- tryPutMVar haveRecvVar $ Link bs
