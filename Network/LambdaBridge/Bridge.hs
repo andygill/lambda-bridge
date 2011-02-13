@@ -7,6 +7,7 @@ import System.Random
 import Data.Default
 import Control.Concurrent
 import Control.Concurrent.MVar
+import Control.Concurrent.Chan
 import Numeric
 import Data.Word
 import Data.Binary
@@ -94,8 +95,36 @@ realisticBridge send recv sock = do
 	tm <- getCurrentTime
 	tmVar <- newMVar tm
 
+        let unrely :: Realistic msg -> msg -> (msg -> IO ()) -> IO ()
+            unrely opts a k = do
+		tm0 <- takeMVar tmVar	-- old char time
+		tm1 <- getCurrentTime	-- current time
+		let pause = pauseU opts - realToFrac (tm1 `diffUTCTime` tm0)
+		if pause <= 0 then return () else do
+		   threadDelay (floor (pause * 1000 * 1000))
+		   return ()
+		b <- you (loseU opts)
+		if b then return () else do -- ignore if you "lose" the message.
+		  a <- optMangle (mangleU opts) (mangler opts) a
+		  b <- you (dupU send)
+		  if b then do		   -- send twice, please
+		  	k a			
+		  	k a			
+		       else do
+	                k a
+		tm <- getCurrentTime
+		putMVar tmVar tm
+		return ()
+        
+        backChan <- newChan
+
+        forkIO $ forever $ do
+                msg <- fromBridge sock
+                unrely recv msg $ writeChan backChan
+
   	return $ Bridge
-	  { toBridge = \ a -> do
+	  { toBridge = \ a -> unrely send a $ toBridge sock
+{-	  
 		tm0 <- takeMVar tmVar	-- old char time
 		tm1 <- getCurrentTime	-- current time
 		let pause = pauseU send - realToFrac (tm1 `diffUTCTime` tm0)
@@ -114,7 +143,8 @@ realisticBridge send recv sock = do
 		tm <- getCurrentTime
 		putMVar tmVar tm
 		return ()
-	  , fromBridge = fromBridge sock
+-}
+	  , fromBridge = readChan backChan -- fromBridge sock
 	  }
 
 -- |  ''Realistic'' is the configuration for ''realisticBridge''.
