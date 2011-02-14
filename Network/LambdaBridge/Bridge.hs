@@ -19,6 +19,7 @@ import qualified Data.ByteString as BS
 import Data.Time.Clock
 import Control.Exception as Exc
 import Control.Monad
+import Control.Concurrent.Chan
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TVar
 
@@ -124,26 +125,6 @@ realisticBridge send recv sock = do
 
   	return $ Bridge
 	  { toBridge = \ a -> unrely send a $ toBridge sock
-{-	  
-		tm0 <- takeMVar tmVar	-- old char time
-		tm1 <- getCurrentTime	-- current time
-		let pause = pauseU send - realToFrac (tm1 `diffUTCTime` tm0)
-		if pause <= 0 then return () else do
-		   threadDelay (floor (pause * 1000 * 1000))
-		   return ()
-		b <- you (loseU send)
-		if b then return () else do -- ignore if you "lose" the message.
-		  a <- optMangle (mangleU send) (mangler send) a
-		  b <- you (dupU send)
-		  if b then do		   -- send twice, please
-		  	toBridge sock a			
-		  	toBridge sock a			
-		       else do
-	                toBridge sock a
-		tm <- getCurrentTime
-		putMVar tmVar tm
-		return ()
--}
 	  , fromBridge = readChan backChan -- fromBridge sock
 	  }
 
@@ -205,63 +186,43 @@ loopbackBridge = do
 
 pipeBridge :: (Show a) => Int -> Float -> IO (Bridge a, Bridge a)
 pipeBridge max_len delay = do
-        sending' <- atomically $ newTVar []
-        recving' <- atomically $ newTVar []
-
-        sending <- newEmptyMVar 
+        sending <- newEmptyMVar
         recving <- newEmptyMVar
+
+        sending' <- newChan
+        recving' <- newChan
 
         tm <- getCurrentTime
 
         -- We want the sending process to *wait* until we are ready to send
         let transport tm0 extra from to = do
                 v <- takeMVar from
+                writeChan to v
+                -- Now I've send the packet, how long do I wait before sending
+                -- the next one?
                 tm1 <- getCurrentTime
-                vs <- atomically $ do
-                        readTVar to
---                print vs
-                vs_len <- atomically $ do
-                        vs <- readTVar to
-                        let vs_len = length vs
-                        when (vs_len < max_len) $ do
-                                writeTVar to (vs ++ [v])
-                        return vs_len
-
-                -- give someone else a shot
-                yield
-
                 let diff :: Float
                     diff = fromRational (toRational (tm1 `diffUTCTime` tm0))
 
-                let extra' = max (extra + delay - diff) 0
---                print (extra,delay,diff,extra')
+                let extra1 = max (extra + delay - diff) 0
 
-                if extra' > 0.02 || vs_len + 1 == max_len then do
---                   print ("EXTRA'",extra')
-                   threadDelay (floor (extra' * 1000 * 1000))
-                   transport tm1 0 from to
-                                else do
-                   transport tm1 extra' from to                                                
-                        
+--                print (extra1,extra,delay,diff)
+
+                when (extra1 > 0.02) $ do
+                        threadDelay (floor (extra1 * 1000 * 1000))
+                                                                   
+                transport tm1 (extra1 * 0.99) from to
 
         forkIO $ transport tm 0 sending sending'
         forkIO $ transport tm 0 recving recving'
 
-        let recv scratch = atomically $ do
-                        vs <- readTVar scratch
-                        case vs of
-                          [] -> retry
-                          (v:vs) -> do
-                                writeTVar scratch vs
-                                return v
-
 	let b1 = Bridge
-		{ toBridge = putMVar sending
-		, fromBridge = recv recving'
+		{ toBridge   = putMVar sending
+		, fromBridge = readChan recving'
 		}
 	let b2 = Bridge
-		{ toBridge = putMVar recving
-		, fromBridge = recv sending'
+		{ toBridge   = putMVar recving
+		, fromBridge = readChan sending'
 		}
 
 	return (b1,b2)
