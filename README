@@ -3,26 +3,29 @@ Lambda bridge is a generic bridge from Haskell (on a CPU) to VHDL on a FPGA.
 Directory Structure
 
  * Network -- the Haskell source
-   * Network/LambdaBridge/*.hs -- generic Haskell "network" code for building lambda bridges.
+   * Network/LambdaBridge/... -- generic Haskell "network" code for building lambda bridges.
 
  * drivers -- The lambda-bridge device driver, in user-space. They are implemented
-   as stand alone user processes that are invoked from the [lb_]board_connect function
-   in C or Haskell. By convention, the lambda-bridge driver binaries start with lb_.
+   as stand alone user processes that are invoked from the [lb_]board_connect function,
+   or bridge_*_driver wrapper functions, in C or Haskell. 
 
- * connect -- C implementation of lb_board_connect.
+   By convention, the lambda-bridge driver binaries start with lb_.
+
+ * connect -- C implementation of lb_board_connect, the lowest-level C code that connects
+   high level bridges to user-space drivers.
  
  * examples -- Examples of using some generic/toy bridges.
     haskell-cat -- Example of calling the cat driver.
 
  * runners -- programs/applications that *use* the lambda-bridge
     * udp_lbshell -- Allows the remote invocation of lambda-bridge commands.
-    * stdio_lbshell -- Allows a lambda bridge driver to be used via stdio and the UNIX shell.
+    * stdio_lbshell -- Allows a lambda bridge driver to be used via stdio and the UNIX shell (TOBEDONE)
 
 In order to use the lambda bridge, you need to set the PATH environment variable, 
 to find the bridges. For example
 
 % export PATH=$PATH:`pwd`/dist/build/lb_cat
 
-
-
+If you use the lava-lambda-bridge package, which contains the Kansas Lava sources for the
+network stack in hardware, then you may want to put it into the subdirectory 'hardware'.
 
