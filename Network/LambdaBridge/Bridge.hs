@@ -23,6 +23,8 @@ import Control.Concurrent.Chan
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TVar
 
+import System.IO.Unsafe (unsafeInterleaveIO)
+
 -- | A 'Bridge' is a bidirectional connection to a specific remote API.
 -- There are many different types of Bridges in the lambda-bridge API.
 
@@ -72,7 +74,9 @@ toFrame a = Frame $ BS.concat $ LBS.toChunks $ encode a
 
 -- | A 'Link' is a sequence of ByteString that can be 
 -- sub-divided if needed. Its just a sequence in a bundle for 
--- transportation.
+-- transportation. 
+
+-- TODO: rename as Channel
 
 newtype Link = Link BS.ByteString 
 instance Show Link where
@@ -238,4 +242,46 @@ stubBridge recv = do
 			putMVar var rs
 			return r
 		}
-	
+
+
+basicByteBridge :: ([Maybe Word8] -> [Maybe Word8]) -> IO (Bridge Byte)
+basicByteBridge fn = do
+        ins <- newEmptyMVar :: IO (MVar Byte)
+        out <- newEmptyMVar :: IO (MVar Byte)
+
+        let prod :: IO [Maybe Word8]
+            prod = unsafeInterleaveIO $ do
+	                x <- tryTakeMVar ins
+	                xs <- prod
+	                return (fmap (\ (Byte w) -> w) x:xs)
+
+        inp <- prod
+
+        let res = fn inp
+
+        forkIO $ sequence_ [ putMVar out (Byte b) | Just b <- res ]
+
+        return $ Bridge 
+                { toBridge = putMVar ins
+                , fromBridge = takeMVar out
+                }
+
+-- | 'byteBridgeToLinkBridge' builds a trivial network (Link) stack.
+byteBridgeToLinkBridge :: (Bridge Byte) -> IO (Bridge Link)
+byteBridgeToLinkBridge bridge = do
+         ins <- newChan :: IO (Chan Link)
+         out <- newChan :: IO (Chan Link)
+
+         forkIO $ forever $ do
+                (Link bs) <- readChan ins
+                sequence_ [ toBridge bridge (Byte b) | b <- BS.unpack bs ]
+
+         forkIO $ forever $ do
+                (Byte b) <- fromBridge bridge
+                writeChan out (Link $ BS.pack [b])
+
+         return $ Bridge 
+                { toBridge = writeChan ins
+                , fromBridge = readChan out
+                }
+
