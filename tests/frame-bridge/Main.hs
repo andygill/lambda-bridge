@@ -35,10 +35,10 @@ main = do
 	(bridge_byte_lhs,bridge_byte_rhs) <- pipeBridge 16 (10/9600) :: IO (Bridge Byte, Bridge Byte)	
 
 	let u = def { pauseU = 0.001
-		    , loseU = 0.000, dupU = 0.000, mangleU = 0.01, mangler = \ g (Byte a) -> 
+		    , loseU = 0.001, dupU = 0.001, mangleU = 0.001, mangler = \ g (Byte a) -> 
 									let (a',_) = random g
 									in Byte (fromIntegral (a' :: Int) + a) }
-	bridge_byte_lhs <- realisticBridge u u bridge_byte_lhs
+	bridge_byte_lhs <- realisticBridge def def bridge_byte_lhs
 --	bridge_byte_rhs <- realisticBridge u def bridge_byte_rhs
 
 --	bridge_byte_lhs <- debugBridge "bridge_byte_lhs" bridge_byte_lhs
@@ -66,7 +66,7 @@ main = do
 
         stop <- newEmptyMVar
 
-	forkIO $ let loop 1000 = putMVar stop ()
+	forkIO $ let -- loop 1000 = return () -- putMVar stop ()
 	             loop n = do
 			send (toStr $ show (n :: Int))
 			loop (succ n)
@@ -75,6 +75,7 @@ main = do
 	forkIO $ let loop = do
 			msg <- recv
 			print ("MSG",msg)
+			if (show msg == "Link [0x31,0x30,0x30,0x30]") then putMVar stop () else return ()
 --			threadDelay (100 * 1000)
 			loop
 		 in loop

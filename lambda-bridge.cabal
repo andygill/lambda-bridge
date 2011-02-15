@@ -51,6 +51,10 @@ Executable lb_cat
    Hs-Source-Dirs: 	.  drivers/haskell/cat
    Main-Is: Main.hs
 
+Executable lb_rs232
+   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default, containers, stm
+   Hs-Source-Dirs: 	.  drivers/haskell/rs232
+   Main-Is: Main.hs
 
 -- And the runners
 
@@ -61,7 +65,7 @@ Executable udp_lbshell
    Include-Dirs:        connect
    Main-Is: Main.hs
 
--- And tests
+-- And examples
 
 Executable haskell-cat
    Build-Depends: 	base >= 4 && < 5, random, time, data-default
@@ -77,6 +81,7 @@ Executable haskell-udp
    Include-Dirs:        connect
    Main-Is: Main.hs
 
+-- TO MOVE/RE-MOVE
 Executable haskell-test3
    Build-Depends: 	base >= 4 && < 5, binary, bytestring, random, time, data-default, containers, stm
    Hs-Source-Dirs: 	.  examples/haskell-test3
@@ -84,7 +89,18 @@ Executable haskell-test3
    Include-Dirs:        connect
    Main-Is: Main.hs
 
+Executable haskell-rs232
+   Build-Depends: 	base >= 4 && < 5, binary, bytestring, random, time, data-default, containers, stm
+   Hs-Source-Dirs: 	. examples/haskell/rs232
+   C-Sources:           connect/lb_board_connect.c
+   Main-Is: Main.hs
+--   GHC-Options: 
+
+-- And the tests
+
 Executable frame-bridge
    Build-Depends: 	base >= 4 && < 5, binary, bytestring, random, time, data-default, containers, stm
    Hs-Source-Dirs: 	. tests/frame-bridge
    Main-Is: Main.hs
+   GHC-Options: -threaded 
+
