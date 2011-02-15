@@ -26,6 +26,10 @@ import Network.LambdaBridge.ARQ
 
 -- The functional argument takes command like arguments and Handles,
 -- and runs something, typically talking to a board, or virtual hardware.
+-- 
+-- Typically, 'bridge_frame_driver' or 'bridge_byte_driver' will be used to
+-- build a driver, from an exisiting bridge. 'bridge_link_driver' is only
+-- used in the case of the 'basic' bridges, building on a reliable 'Link'.
 
 bundle_driver :: String -> ([String] -> [Handle] -> [Handle] -> IO ()) -> IO ()
 bundle_driver name cont = do
@@ -39,6 +43,57 @@ bundle_driver name cont = do
 		cont rest [send] [resv]
 	  _ -> error $ "bad (or unsupported) argument format for driver (" ++ name ++ "): " 
 			++ show args ++ "\n" ++ "(use 'board_connect' to call this driver)"
+
+-- | 'bridge_link_driver' assumes the two FIFO archtecture, one in each direction of the Link-Bridge; the simple case.
+bridge_link_driver :: String -> Limit -> ([String] -> IO (Bridge Link)) -> IO ()
+bridge_link_driver name limit bridge_fn = bundle_driver name $ \ args ins out -> do
+
+	bridge_link <- bridge_fn args
+
+	bridge_link <- debugBridge "bridge_frame_driver" bridge_link
+        
+        let sendARQ = toBridge bridge_link
+            recvARQ = fromBridge bridge_link
+            
+	-- Send first volley, to start the service
+	sendARQ (Link $ BS.pack [])
+
+	print (ins,out)
+
+	let hGetSome n = do
+	 	b   <- BS.hGet (head ins) 1
+		bss <- get (n - 1)
+		return (BS.append b (BS.concat bss))
+	      where
+		get 0 = return []
+		get n = do bs <- BS.hGetNonBlocking (head ins) n
+			   if BS.null bs 
+				then return []
+				else do bss <- get (n - BS.length bs)
+					return (bs:bss)
+
+	let reader = do
+		bs <- hGetSome 128	-- 128 is the size of our 'packets'
+		if BS.null bs
+		  then return ()
+		  else do
+			print ("sending",bs)
+			sendARQ (Link bs)
+			reader
+		
+	forkIO $ reader
+
+	let writer = do
+		hPutStrLn (head out) "Hello"
+		threadDelay (1000 * 100)
+		(Link bs) <- recvARQ
+		print ("recv",bs)
+		BS.hPut (head out) bs
+		writer
+		
+		
+	writer `catch` \ e -> print ("Exc",e)
+
 	
 -- | 'bridge_frame_driver' creates a driver from the 'Bridge Frame' abstraction,
 -- for example a UDP implementation over RJ45.
@@ -105,3 +160,4 @@ bridge_byte_driver name limit bridge_fn = bridge_frame_driver name limit $ \ arg
 	bridge_byte <- bridge_fn args
 	-- and return the higher level frame protocol	
         frameProtocol bridge_byte
+
