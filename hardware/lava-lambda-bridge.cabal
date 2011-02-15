@@ -1,0 +1,37 @@
+Name:                lava-lambda-bridge
+Version:             0.1
+Synopsis:            A Lava implementation of the lambda-bridge.
+Description:         A Lava implementation of the lambda-bridge.
+License:             BSD3
+License-file:        LICENSE
+Author:              Andy Gill <andygill@ku.edu>
+Maintainer:          Andy Gill <andygill@ku.edu>
+Homepage:            http://www.ittc.ku.edu/csdl/fpg/Tools/LambdaBridge
+Stability:           Experimental
+Category:            Foreign, Hardware, Middleware, Network, Lava
+Tested-With:         GHC == 6.12.1
+Cabal-Version:       >= 1.8
+Build-Type:          Simple
+
+extra-source-files:  README
+
+Flag generate-VHDL
+  Default: True
+  Description: Build the VHDL code for the various services
+
+Library
+  Build-Depends:   	base >= 4 && < 5, binary, bytestring, random, time, data-default, containers, stm, 
+                        sized-types, directory, process, data-reify, dotgen, fgl, netlist-to-vhdl, netlist,
+                        pretty
+  Hs-Source-Dirs: 	. .. ../../kansas-lava
+
+  Exposed-Modules:	Hardware.KansasLava.RS232
+
+Executable lava-bridge-test
+   Build-Depends: 	base >= 4 && < 5, binary, bytestring, random, time, data-default, containers, stm,
+                        sized-types, directory, process, data-reify, dotgen, fgl, netlist-to-vhdl, netlist,
+                        pretty
+
+   Hs-Source-Dirs: 	. .. ../../kansas-lava tests/lava-bridge
+   Main-Is:		 Main.hs
+
