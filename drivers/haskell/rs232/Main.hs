@@ -32,6 +32,12 @@ import Network.LambdaBridge.Timeout
 
 data SessionHandle = SessionHandle Socket SockAddr
 
+
+-- On linux, we need to give permissions to read/write the TTY,
+-- and 
+--   % stty -F /dev/ttyS0
+
+
 main = bridge_byte_driver "lb_rs232" (boundLimit 1) $ \ args -> do
    hPutStrLn stderr ("Remote Service:" ++ show args)
    case args of
