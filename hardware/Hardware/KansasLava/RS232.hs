@@ -70,8 +70,8 @@ findBit byte x = (coerce) byte .!. ((unsigned) (x - 1) :: sig X8)
 rs232out :: forall clk sig a . (Eq clk, Clock clk, sig a ~ Clocked clk a, clk ~ ()) 
 	=> Integer			-- ^ Baud Rate.
 	-> Integer			-- ^ Clock rate, in Hz.
-        -> I (sig (Enabled Word8)) ()
-        -> O (sig Bool) (sig Bool)
+        -> I (sig (Enabled Word8))      ()
+        -> O (sig Bool)                 (sig Bool)
 rs232out baudRate clkRate (inp0,()) = (accept,out)
   where
 	-- at the baud rate for transmission
@@ -122,8 +122,8 @@ rs232out baudRate clkRate (inp0,()) = (accept,out)
 rs232in :: forall clk sig a . (Eq clk, Clock clk, sig a ~ Clocked clk a) 
 	=> Integer			-- ^ Baud Rate.
 	-> Integer			-- ^ Clock rate, in Hz.
-	-> I (sig Bool) (sig Bool) 	-- ^ signal input x back edge for FIFO
-        -> O () (sig (Enabled Word8))
+	-> I (sig Bool)         (sig Bool) 	-- ^ signal input x back edge for FIFO
+        -> O ()                 (sig (Enabled Word8))
 					-- ^ output
 rs232in baudRate clkRate (inp',accept) = ((),out)
   where
