@@ -1,6 +1,7 @@
 module Main where
 
 import Data.Word
+import Data.Default
         
 import Language.KansasLava
 
@@ -26,4 +27,18 @@ test2 = {- take 257 $ -} [ x | Just x <- res3 ]
         ((),res2)  = rs232in  9600 clkRate' (res,back2)
         (back2,res3) = fromHandShaken res2
 
-main = print (zip test2 (map fromIntegral [0..] :: [Word8]))
+crystal :: Integer
+crystal = 50 * 1000 * 1000
+
+main = do
+        -- print (zip test2 (map fromIntegral [0..] :: [Word8]))
+
+        cir <- reifyCircuit (rs232in 9600 crystal :: I (Seq Bool) (Seq Bool) -> O () (Seq (Enabled Word8)))
+        cir0 <- optimizeCircuit def cir
+        print cir0
+
+        writeVhdlCircuit [] "x" "x.vhd" cir0
+
+
+
+
