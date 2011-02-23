@@ -148,14 +148,8 @@ rs232in baudRate clkRate (inp',accept) = ((),out)
 		ready	<- newReg (False :: Bool)
 		counter <- newReg (0 :: U8)
 
-		let stdCounter :: CSeq clk (StdLogicVector X8)
-		    stdCounter = toStdLogicVector (reg counter)
-
-		let lowCounter :: CSeq clk U4
-		    lowCounter = fromStdLogicVector $ extractStdLogicVector 0 stdCounter
-
-		let highCounter :: CSeq clk U4
-		    highCounter = fromStdLogicVector $ extractStdLogicVector 4 stdCounter
+		let lowCounter, highCounter :: sig U4
+		    (lowCounter,highCounter) = unpack (coerce (reg counter) :: sig (U4,U4))
 
 		WHEN fastTick $ do
 	 		CASE [ IF ((reg reading .==. low) .&&. (inp .==. low)) $ do
