@@ -1,6 +1,6 @@
-{-# LANGUAGE TypeFamilies, ScopedTypeVariables, NoMonomorphismRestriction #-}
+{-# LANGUAGE TypeFamilies, ScopedTypeVariables, NoMonomorphismRestriction, Rank2Types #-}
 
-module Hardware.KansasLava.RS232 (rs232out, rs232in) where
+module Hardware.KansasLava.RS232 (rs232out, rs232in, liftWithUART) where
 
 import Data.Ratio
 
@@ -175,15 +175,104 @@ rs232in baudRate clkRate (inp',accept) = ((),out)
 						   | i <- [1..8]
 						   ]
 
-			     , OTHERWISE $ do
-				-- restart; should never happen
-				reading := low
+--			     , OTHERWISE $ do
+--				-- restart; should never happen
+--				reading := low
 			     ]
 
 		-- If you can accept something, and you have something to ac
 		WHEN ((accept .==. high) .&&. (isEnabled (reg outVal))) $ do
 			outVal := pureS Nothing
+			reading := low
 
 		return $
 		 	(var outVal) 
 --			observeBothAloud "output" (var outVal) (stdCounter)
+
+
+-- Idea: I think we can parameterize via a functor (twice) here.
+
+-- We use Seq, not CSeq, because this *must* be the top-level clock anyway.
+liftWithUART :: Integer
+             -> Integer
+             -> (    (I  (Seq (Enabled Word8))           (Seq Bool), other_outs)
+                  -> (other_ins, O  (Seq Bool)           (Seq (Enabled Word8)))
+                )
+             -> I (Seq Bool)              other_outs
+             -> O other_ins               (Seq Bool) 
+liftWithUART baudRate clkRate dut (inp,otherIn) = (otherOut,out)
+   where
+           ((),valIn)                   = rs232in baudRate clkRate (inp,inAck)
+           (otherOut,(inAck,valOut))    = dut ((valIn,outAck),otherIn)
+           (outAck,out)                 = rs232out baudRate clkRate (valOut,())
+
+
+liftWithUART' :: forall f g . (Frac f, Frac g)
+             => Integer
+             -> Integer
+             -> ( f (I  (Seq (Enabled Word8))           (Seq Bool))
+                  -> g (O  (Seq Bool)           (Seq (Enabled Word8)))
+                )
+             -> f (Seq Bool)
+             -> g (Seq Bool)
+liftWithUART' baudRate clkRate dut input = output
+   where
+--           f :: forall a . a -> f a
+           Build f inp = frac $ input
+
+           ((),valIn)                   = rs232in baudRate clkRate (inp,inAck)
+           Build g (inAck,valOut)       = frac $ dut (f (valIn,outAck))
+
+           (outAck,out)                 = rs232out baudRate clkRate (valOut,())           
+
+           output = g out
+
+-- Turn a FIFO (for example) into a extra parameterized thing, like required by
+
+
+data IdX a = IdX a
+
+instance Functor IdX where
+        fmap f (IdX a) = IdX (f a)
+
+data Build f a = Build (forall a . a -> f a) a
+
+class Functor f => Frac f where 
+  frac :: f a -> Build f a
+
+instance (Frac ((,) a)) where
+  frac (a,b) = Build (\ b -> (a,b)) b
+
+instance Frac IdX where
+  frac (IdX a) = Build IdX a
+
+liftFIFO :: (a -> b) -> IdX a -> IdX b
+liftFIFO = fmap
+
+data Ack sig a = Ack (sig Bool) a
+
+instance Frac (Ack sig) where
+  frac (Ack ack a) = Build (Ack ack) a
+
+-- A version of Fmap that you get for free with Frac
+fracFmap :: Frac f => (a -> b) -> f a -> f b
+fracFmap fn fa = f (fn a)
+   where
+           Build f a = frac fa
+           
+instance Functor (Ack sig) where fmap = fracFmap
+
+fifo' :: (Clock clk, sig ~ CSeq clk, count ~ (ADD w X1), Size count, Size w, Rep a, Rep count, Rep w, Num count, Num w)
+     => Witness w
+     -> sig Bool
+     -> Ack sig (sig (Enabled a))
+     -> Ack sig (sig (Enabled a))
+fifo' w rst (Ack outAck inp) = Ack inAck out
+   where
+           (inAck,out) = fifo w rst (inp,outAck)
+           
+
+-- f (Enabled a) (f (Bool) ())
+
+
+
