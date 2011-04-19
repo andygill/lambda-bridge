@@ -44,16 +44,18 @@ bundle_driver name cont = do
 	  _ -> error $ "bad (or unsupported) argument format for driver (" ++ name ++ "): " 
 			++ show args ++ "\n" ++ "(use 'board_connect' to call this driver)"
 
--- | 'bridge_link_driver' assumes the two FIFO archtecture, one in each direction of the Link-Bridge; the simple case.
-bridge_link_driver :: String -> Limit -> ([String] -> IO (Bridge Link)) -> IO ()
+-- | 'bridge_link_driver' assumes the two FIFO architecture,
+-- one in each direction of the Data-Bridge; the simple case.
+bridge_link_driver :: String -> Limit -> ([String] -> IO ([Link -> IO ()], [IO Link])) -> IO ()
+--(Bridge Data)) -> IO ()
 bridge_link_driver name limit bridge_fn = bundle_driver name $ \ args ins out -> do
 
-	bridge_link <- bridge_fn args
+        ([sendARQ],[recvARQ]) <- bridge_fn args
 
-	bridge_link <- debugBridge "bridge_frame_driver" bridge_link
-        
-        let sendARQ = toBridge bridge_link
-            recvARQ = fromBridge bridge_link
+--	bridge_link <- debugBridge "bridge_frame_driver" bridge_link
+--        
+--        let sendARQ = toBridge bridge_link
+--            recvARQ = fromBridge bridge_link
             
 	-- Send first volley, to start the service
 	sendARQ (Link $ BS.pack [])
