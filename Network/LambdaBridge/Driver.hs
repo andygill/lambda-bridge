@@ -28,7 +28,7 @@ import Network.LambdaBridge.ARQ
 -- and runs something, typically talking to a board, or virtual hardware.
 -- 
 -- Typically, 'bridge_frame_driver' or 'bridge_byte_driver' will be used to
--- build a driver, from an exisiting bridge. 'bridge_link_driver' is only
+-- build a driver, from an existing bridge. 'bridge_link_driver' is only
 -- used in the case of the 'basic' bridges, building on a reliable 'Link'.
 
 bundle_driver :: String -> ([String] -> [Handle] -> [Handle] -> IO ()) -> IO ()

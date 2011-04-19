@@ -32,7 +32,7 @@ data Bridge msg = Bridge
 	{ toBridge 	:: msg -> IO ()	-- ^ write to a bridge; may block; called many times.
 	, fromBridge	:: IO msg	-- ^ read from a bridge; may block, called many times.
 					--   The expectation is that *eventually* after some
-					--   time and/or compuation
+					--   time and/or computation
 					--   someone will read from the bridge, and the
 					--   reading does not depend on any external interaction or events.
 	}
@@ -57,7 +57,7 @@ instance Show Byte where
 -- not be garbled or fragmented (via CRC or equiv).
 -- There is typically an implementation specific maximum size of a Frame.
 
--- An example of a 'Bridge (of) Frame Frame' is UDP.
+-- An example of a 'Bridge (of) Frame' is UDP.
 
 newtype Frame = Frame BS.ByteString 
 instance Show Frame where
