@@ -3,16 +3,10 @@
 -- Can be used to put a lightweight reliable link on top of an unreliable packet system, like UDP,
 -- or a unreliable bytestream system like RS232.
 
-module Network.LambdaBridge.ARQ 
-{-	( SessionId
-	, PacketId
-	, BridgePort
-	, Data(..)
-	, Ack(..)
-	, Packet(..)
-	, arqProtocol
-	) where -}
-		where
+module Network.LambdaBridge.ARQ
+        ( sendWithARQ
+        , recvWithARQ
+        ) where
 
 import Data.Word
 import Data.Binary
@@ -42,20 +36,20 @@ type PacketId  = Word16
 -- | The data packet. It is always okay to fragment a packet, as long as the packets do not appear out of order.
 -- exception: The 0 (control) channel should not be fragmented.
 
-data Data = Data
+data FrameData = FrameData
 		PacketId	-- the number of the packet
 		BS.ByteString	-- the data (strict bytestring, not lazy)
 	deriving (Show)
 	
-instance Binary Data where
-	put (Data packId bs) = do
+instance Binary FrameData where
+	put (FrameData packId bs) = do
 		put packId
 		put (fromIntegral (BS.length bs) :: Word16)
 		putByteString bs
 	get = do packId <- get
 	         sz <- get :: Get.Get Word16
 	         bs <- Get.getByteString (fromIntegral sz)
-	         return $ Data packId bs
+	         return $ FrameData packId bs
 
 data Ack = Ack  PacketId	-- ^ packet I just got
 	 | Free PacketId	-- ^ packet I got and forwarded
@@ -86,9 +80,9 @@ sendWithARQ bridge tm = do
 
 	let start n = do
 		Link bs <- takeMVar toSendVar
-		ready (Data n bs)
+		ready (FrameData n bs)
 
-	    ready dat@(Data n bs) = do
+	    ready dat@(FrameData n bs) = do
 		putData dat
 		res <- fastTimeout $ 
 		  let loop = do
@@ -120,7 +114,7 @@ sendWithARQ bridge tm = do
 		  Nothing       -> ping (n+1)
 		
 	    ping n = do
-		putData (Data n BS.empty)
+		putData (FrameData n BS.empty)
 		res <- slowTimeout $ 
 		  let loop = do
 			ack <- getAck
@@ -153,8 +147,8 @@ recvWithARQ bridge = do
 		dat <- getData
 		recv'd n dat
 
-	    recv'd :: PacketId -> Data -> IO ()
-	    recv'd n (Data m bs) = 
+	    recv'd :: PacketId -> FrameData -> IO ()
+	    recv'd n (FrameData m bs) = 
                 -- TODO: figure out what to do if n < m
                 -- which is when the protocol has gone badly wrong (REBOOT NEEDED?)
                 -- Also, make sure the loop round works
@@ -181,11 +175,11 @@ recvWithARQ bridge = do
 
 	    blocked :: PacketId -> MVar () -> IO ()
 	    blocked n sync = do
-		Data m bs <- getData
+		FrameData m bs <- getData
 		s <- tryTakeMVar sync
 		case s of
 		  -- Previous free sent, so can rejoin the start path, for a new packet
-		  Just () -> recv'd (n+1) (Data m bs)
+		  Just () -> recv'd (n+1) (FrameData m bs)
 		  -- 'free' packet not yet sent
 		  Nothing -> do
 			if m == n then do
