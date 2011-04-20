@@ -1,5 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
--- | Implementation of ARQ; http://en.wikipedia.org/wiki/Automatic_repeat_request "Stop-and-wait ARQ".
+-- | Implementation of ARQ; <http://en.wikipedia.org/wiki/Automatic_repeat_request> ''Stop-and-wait ARQ''.
 -- Can be used to put a lightweight reliable link on top of an unreliable packet system, like UDP,
 -- or a unreliable bytestream system like RS232.
 
@@ -33,14 +33,22 @@ import Data.Char
 
 type PacketId  = Word16
 
--- | The data packet. It is always okay to fragment a packet, as long as the packets do not appear out of order.
--- exception: The 0 (control) channel should not be fragmented.
+{- | The 'FrameData' packet. It is always okay to fragment a packet, as long as the packets do not appear out of order. 
+
+'FrameData' uses the following Binary format:
+
+> <- 2 bytes  -> <- 2 bytes ->
+> +------+------+------+------+----------------+
+> |  frame_id   |   size      |  ... DATA .... |
+> +------+------+------+------+----------------+
+
+-}
 
 data FrameData = FrameData
 		PacketId	-- the number of the packet
 		BS.ByteString	-- the data (strict bytestring, not lazy)
 	deriving (Show)
-	
+
 instance Binary FrameData where
 	put (FrameData packId bs) = do
 		put packId
@@ -50,6 +58,22 @@ instance Binary FrameData where
 	         sz <- get :: Get.Get Word16
 	         bs <- Get.getByteString (fromIntegral sz)
 	         return $ FrameData packId bs
+
+{- |  The back-channel from data getting sent, on any specific channel,
+   is always just 'Ack' and 'Free'. 'Free' implies 'Ack'.
+ 
+'Ack' uses the following Binary format:
+
+> <-byte-><- 2 bytes ->
+> +------+------+------+
+> | 0x00 |  frame_id   |                Ack
+> +------+------+------+
+>
+> +------+------+------+
+> | 0xff |  frame_id   |                Free
+> +------+------+------+
+
+-}
 
 data Ack = Ack  PacketId	-- ^ packet I just got
 	 | Free PacketId	-- ^ packet I got and forwarded
@@ -69,9 +93,9 @@ instance Binary Ack where
 		   0x00 -> return $ Ack packId
 		   0xff -> return $ Free packId
 
-sendWithARQ :: Bridge Frame -> Limit -> IO (Link -> IO ())
+sendWithARQ :: Bridge Frame -> Limit -> IO (Packet -> IO ())
 sendWithARQ bridge tm = do
-	toSendVar   <- newEmptyMVar :: IO (MVar Link)
+	toSendVar   <- newEmptyMVar :: IO (MVar Packet)
 
 	fastTimeout <- timeout tm
 	slowTimeout <- timeout tm
@@ -79,7 +103,7 @@ sendWithARQ bridge tm = do
 	let putData   = toBridge bridge . toFrame
 
 	let start n = do
-		Link bs <- takeMVar toSendVar
+		Packet bs <- takeMVar toSendVar
 		ready (FrameData n bs)
 
 	    ready dat@(FrameData n bs) = do
@@ -135,9 +159,9 @@ sendWithARQ bridge tm = do
 
 	return $ putMVar toSendVar 
 
-recvWithARQ :: Bridge Frame -> IO (IO Link)
+recvWithARQ :: Bridge Frame -> IO (IO Packet)
 recvWithARQ bridge = do
-	haveRecvVar <- newEmptyMVar :: IO (MVar Link)
+	haveRecvVar <- newEmptyMVar :: IO (MVar Packet)
 
 	let getData  = liftM fromFrame $ fromBridge bridge
 	let putAck   = toBridge bridge . toFrame
@@ -156,18 +180,18 @@ recvWithARQ bridge = do
 			putAck (Free m) -- send a free, because this packet is already here
 			start n
 		      else do	-- m == n
-			pushed <- tryPutMVar haveRecvVar $ Link bs
+			pushed <- tryPutMVar haveRecvVar $ Packet bs
 			if pushed then do
-				putAck (Free n) -- send a free, because we've got and recieved the packet
+				putAck (Free n) -- send a free, because we've got and received the packet
 				start (n+1)	-- and wait for the next packet
 			      else do
 				-- Mvar was full, so blocked
-				putAck (Ack n) 	-- send a ack, becase we *did* get the packet, even
+				putAck (Ack n) 	-- send a ack, because we *did* get the packet, even
 						-- though we can't accept it yet.
 
 				sync <- newEmptyMVar
 				forkIO $ do
-					putMVar haveRecvVar $ Link bs
+					putMVar haveRecvVar $ Packet bs
 					putAck (Free m)
 					putMVar sync ()
 				blocked n sync

@@ -75,7 +75,7 @@ main = do
 	forkIO $ let loop = do
 			msg <- recv
 			print ("MSG",msg)
-			if (show msg == "Link [0x31,0x30,0x30,0x30]") then putMVar stop () else return ()
+			if (show msg == "Packet [0x31,0x30,0x30,0x30]") then putMVar stop () else return ()
 --			threadDelay (100 * 1000)
 			loop
 		 in loop
@@ -85,5 +85,5 @@ main = do
 
 	return ()
    where	
-	toStr :: String -> Link
-	toStr = Link . BS.pack . map (fromIntegral . ord)
+	toStr :: String -> Packet
+	toStr = Packet . BS.pack . map (fromIntegral . ord)

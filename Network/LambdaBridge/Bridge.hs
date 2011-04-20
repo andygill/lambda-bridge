@@ -53,7 +53,7 @@ instance Show Byte where
    show (Byte w) = "0x" ++ showHex w ""
 
 -- | A 'Bridge (of) Frame' is small set of bytes, where a Frame may
--- or may not get to the destiation, but if receieved, will 
+-- or may not get to the destination, but if received, will 
 -- not be garbled or fragmented (via CRC or equiv).
 -- There is typically an implementation specific maximum size of a Frame.
 
@@ -72,18 +72,17 @@ fromFrame (Frame fs) = decode (LBS.fromChunks [fs])
 toFrame :: (Binary a) => a -> Frame
 toFrame a = Frame $ BS.concat $ LBS.toChunks $ encode a
 
--- | A 'Link' is a sequence of ByteString that can be 
+-- | A 'Packet' is a sequence of ByteString that can be 
 -- sub-divided if needed. Its just a sequence in a bundle for 
--- transportation. 
+-- transportation. You would not typically get a Bridge Packet.
 
 -- TODO: rename as Channel
 
-newtype Link = Link BS.ByteString 
-instance Show Link where
-   show (Link wds) = "Link " ++ show [ Byte w | w <- BS.unpack wds ]
+newtype Packet = Packet BS.ByteString 
+instance Show Packet where
+   show (Packet wds) = "Packet " ++ show [ Byte w | w <- BS.unpack wds ]
 
 -- | ''realisticBridge'' is a way of making a 'Bridge' less sterile, for testing purposes.
---- currently only effects the outgoing direction.
 realisticBridge :: (Show msg) => Realistic msg -> Realistic msg -> Bridge msg -> IO (Bridge msg)
 realisticBridge send recv sock = do
 	let you :: Float -> IO Bool
@@ -171,7 +170,7 @@ debugBridge name bridge = do
 		}
 
 -- | 'loopbackBridge' is a simple reflective loopback. It obeys the basic
--- permise of a bridge; if no-one is listening, then data can get lost.
+-- premise of a bridge; if no-one is listening, then data can get lost.
 -- It is in the nature of the bridge; things do not always make it.
 
 loopbackBridge :: IO (Bridge a)
@@ -266,22 +265,23 @@ basicByteBridge fn = do
                 , fromBridge = takeMVar out
                 }
 
--- | 'byteBridgeToLinkBridge' builds a trivial network (Link) stack.
-byteBridgeToLinkBridge :: (Bridge Byte) -> IO (Bridge Link)
-byteBridgeToLinkBridge bridge = do
-         ins <- newChan :: IO (Chan Link)
-         out <- newChan :: IO (Chan Link)
+{-
+-- | 'byteBridgeToPacketBridge' builds a trivial network (Packet) stack.
+byteBridgeToPacketBridge :: (Bridge Byte) -> IO (Bridge Packet)
+byteBridgeToPacketBridge bridge = do
+         ins <- newChan :: IO (Chan Packet)
+         out <- newChan :: IO (Chan Packet)
 
          forkIO $ forever $ do
-                (Link bs) <- readChan ins
+                (Packet bs) <- readChan ins
                 sequence_ [ toBridge bridge (Byte b) | b <- BS.unpack bs ]
 
          forkIO $ forever $ do
                 (Byte b) <- fromBridge bridge
-                writeChan out (Link $ BS.pack [b])
+                writeChan out (Packet $ BS.pack [b])
 
          return $ Bridge 
                 { toBridge = writeChan ins
                 , fromBridge = readChan out
                 }
-
+-}

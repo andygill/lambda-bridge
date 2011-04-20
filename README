@@ -7,7 +7,7 @@ Directory Structure
 
  * drivers -- The lambda-bridge device driver, in user-space. They are implemented
    as stand alone user processes that are invoked from the [lb_]board_connect function,
-   or bridge_*_driver wrapper functions, in C or Haskell. 
+   or *_driver wrapper functions, in C or Haskell. 
 
    By convention, the lambda-bridge driver binaries start with lb_.
 

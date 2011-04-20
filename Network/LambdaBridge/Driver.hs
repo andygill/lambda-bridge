@@ -16,25 +16,29 @@ import Network.LambdaBridge.Frame
 import Network.LambdaBridge.ARQ
 
 
--- | 'bundle_driver' builds a driver. This should be called via board_connect,
+-- | 'bundle_driver' builds a driver.  A driver is a stand-alone UNIX process.
+-- A Haskell program should never call bundle_driver directly, 
 --  so a typical use is
 --
 -- > main = bundle_driver "driver-name/description" $ \ args ins outs -> do
--- >    		-- ...
--- >			-- work to talk to the board
--- >			-- ...
-
+-- >	-- ...
+-- >	-- work to talk to the board
+-- >	-- ...
+--
 -- The functional argument takes command like arguments and Handles,
 -- and runs something, typically talking to a board, or virtual hardware.
 -- 
 -- Typically, 'bridge_frame_driver' or 'bridge_byte_driver' will be used to
--- build a driver, from an existing bridge. 'bridge_link_driver' is only
--- used in the case of the 'basic' bridges, building on a reliable 'Link'.
+-- build a driver, from an existing bridge. 'packet_driver' is only
+-- used in the case of the 'basic' bridges, building on a reliable 'Packet'.
+--
+-- Drivers are invoked using board_connect, which does a UNIX fork/exec for you.
 
 bundle_driver :: String -> ([String] -> [Handle] -> [Handle] -> IO ()) -> IO ()
 bundle_driver name cont = do
 	args <- getArgs
 	case args of
+        -- TODO: generalize to any number of channels.
 	  ("1":n:"1":m:rest) | all isDigit n && all isDigit m -> do
 		send <- fdToHandle (read n)
 		resv <- fdToHandle (read m)
@@ -44,13 +48,14 @@ bundle_driver name cont = do
 	  _ -> error $ "bad (or unsupported) argument format for driver (" ++ name ++ "): " 
 			++ show args ++ "\n" ++ "(use 'board_connect' to call this driver)"
 
--- | 'bridge_link_driver' assumes the two FIFO architecture,
+-- | 'packet_driver' assumes the two FIFO architecture (for now),
 -- one in each direction of the Data-Bridge; the simple case.
-bridge_link_driver :: String -> Limit -> ([String] -> IO ([Link -> IO ()], [IO Link])) -> IO ()
---(Bridge Data)) -> IO ()
-bridge_link_driver name limit bridge_fn = bundle_driver name $ \ args ins out -> do
+packet_driver :: String -> ([String] -> Int -> Int -> IO ([Packet -> IO ()], [IO Packet])) -> IO ()
+packet_driver name bridge_fn = bundle_driver name $ \ args ins outs -> do
 
-        ([sendARQ],[recvARQ]) <- bridge_fn args
+
+        -- We assume single FIFO in each direction, 
+        ([sendARQ],[recvARQ]) <- bridge_fn args (length ins) (length outs)
 
 --	bridge_link <- debugBridge "bridge_frame_driver" bridge_link
 --        
@@ -58,9 +63,9 @@ bridge_link_driver name limit bridge_fn = bundle_driver name $ \ args ins out ->
 --            recvARQ = fromBridge bridge_link
             
 	-- Send first volley, to start the service
-	sendARQ (Link $ BS.pack [])
+	sendARQ (Packet $ BS.pack [])
 
-	print (ins,out)
+	print (ins,outs)
 
 	let hGetSome n = do
 	 	b   <- BS.hGet (head ins) 1
@@ -80,17 +85,17 @@ bridge_link_driver name limit bridge_fn = bundle_driver name $ \ args ins out ->
 		  then return ()
 		  else do
 			print ("sending",bs)
-			sendARQ (Link bs)
+			sendARQ (Packet bs)
 			reader
 		
 	forkIO $ reader
 
 	let writer = do
-		hPutStrLn (head out) "Hello"
+		hPutStrLn (head outs) "Hello"
 		threadDelay (1000 * 100)
-		(Link bs) <- recvARQ
+		(Packet bs) <- recvARQ
 		print ("recv",bs)
-		BS.hPut (head out) bs
+		BS.hPut (head outs) bs
 		writer
 		
 		
@@ -101,59 +106,32 @@ bridge_link_driver name limit bridge_fn = bundle_driver name $ \ args ins out ->
 -- for example a UDP implementation over RJ45.
 
 bridge_frame_driver :: String -> Limit -> ([String] -> IO (Bridge Frame)) -> IO ()
-bridge_frame_driver name limit bridge_fn = bundle_driver name $ \ args ins out -> do
+bridge_frame_driver name limit bridge_fn = packet_driver name $ \ args in_sz out_sz -> do
+
+        let inputs = take in_sz [0..]
+        let outputs = take out_sz [(last inputs + 1) .. ]
 
 	bridge_frame <- bridge_fn args
 
 	bridge_frame <- debugBridge "bridge_frame_driver" bridge_frame
 
-	bridge_frames <- multiplexBridge [0x33,0x34] bridge_frame
+	bridge_frames <- multiplexBridge (inputs ++ outputs) bridge_frame
 
-	let bridge_frame_0x33 = bridge_frames 0x33
-	let bridge_frame_0x34 = bridge_frames 0x34
+	sendARQs <- sequence 
+	                [ sendWithARQ (bridge_frames i) limit
+	                | i <- inputs
+	                ]
 
-	sendARQ <- sendWithARQ bridge_frame_0x33 limit
+	recvARQs <- sequence 
+	                [  recvWithARQ (bridge_frames o)
+                        | o <- outputs
+                        ]
 
-	recvARQ <- recvWithARQ bridge_frame_0x34
 
-	-- Send first volley, to start the service
-	sendARQ (Link $ BS.pack [])
+--	-- Send first volley, to start the service
+--	sendARQ (Packet $ BS.pack [])
 
-	print (ins,out)
-
-	let hGetSome n = do
-	 	b   <- BS.hGet (head ins) 1
-		bss <- get (n - 1)
-		return (BS.append b (BS.concat bss))
-	      where
-		get 0 = return []
-		get n = do bs <- BS.hGetNonBlocking (head ins) n
-			   if BS.null bs 
-				then return []
-				else do bss <- get (n - BS.length bs)
-					return (bs:bss)
-
-	let reader = do
-		bs <- hGetSome 128	-- 128 is the size of our 'packets'
-		if BS.null bs
-		  then return ()
-		  else do
-			print ("sending",bs)
-			sendARQ (Link bs)
-			reader
-		
-	forkIO $ reader
-
-	let writer = do
-		hPutStrLn (head out) "Hello"
-		threadDelay (1000 * 100)
-		(Link bs) <- recvARQ
-		print ("recv",bs)
-		BS.hPut (head out) bs
-		writer
-		
-		
-	writer `catch` \ e -> print ("Exc",e)
+        return (sendARQs,recvARQs)
 
 -- | 'bridge_byte_driver' creates a driver from the 'Bridge Byte' abstraction,
 -- for example an RS-232.
