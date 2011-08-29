@@ -98,7 +98,7 @@ Executable haskell-rs232
 
 -- And the tests
 
-Executable frame-bridge
+Executable test-frame-bridge
    Build-Depends: 	base >= 4 && < 5, binary, bytestring, random, time, data-default, containers, stm
    Hs-Source-Dirs: 	. tests/frame-bridge
    Main-Is: Main.hs

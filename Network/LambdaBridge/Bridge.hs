@@ -37,15 +37,10 @@ data Bridge msg = Bridge
 					--   reading does not depend on any external interaction or events.
 	}
 
--- | A 'BridgePort' is the port number of a remote FIFO/pipe,
--- where  0 is (reserved) controller, 1 is the main fifo.
-
-type BridgePort = Word8
-
 -- | A 'Bridge (of) Byte' is for talking one byte at a time, where the
 -- byte may or may not get there, and may get garbled.
 --
--- An example of a 'Bridge (of) Byte Byte' is a RS-232 link.
+-- An example of a 'Bridge (of) Byte' is a RS-232 link.
 
 newtype Byte = Byte W.Word8 deriving (Eq,Ord)
 
@@ -71,16 +66,6 @@ fromFrame (Frame fs) = decode (LBS.fromChunks [fs])
 -- | A way of turning something into a Frame, using the 'Binary' class.
 toFrame :: (Binary a) => a -> Frame
 toFrame a = Frame $ BS.concat $ LBS.toChunks $ encode a
-
--- | A 'Packet' is a sequence of ByteString that can be 
--- sub-divided if needed. Its just a sequence in a bundle for 
--- transportation. You would not typically get a Bridge Packet.
-
--- TODO: rename as Channel
-
-newtype Packet = Packet BS.ByteString 
-instance Show Packet where
-   show (Packet wds) = "Packet " ++ show [ Byte w | w <- BS.unpack wds ]
 
 -- | ''realisticBridge'' is a way of making a 'Bridge' less sterile, for testing purposes.
 realisticBridge :: (Show msg) => Realistic msg -> Realistic msg -> Bridge msg -> IO (Bridge msg)
@@ -265,23 +250,3 @@ basicByteBridge fn = do
                 , fromBridge = takeMVar out
                 }
 
-{-
--- | 'byteBridgeToPacketBridge' builds a trivial network (Packet) stack.
-byteBridgeToPacketBridge :: (Bridge Byte) -> IO (Bridge Packet)
-byteBridgeToPacketBridge bridge = do
-         ins <- newChan :: IO (Chan Packet)
-         out <- newChan :: IO (Chan Packet)
-
-         forkIO $ forever $ do
-                (Packet bs) <- readChan ins
-                sequence_ [ toBridge bridge (Byte b) | b <- BS.unpack bs ]
-
-         forkIO $ forever $ do
-                (Byte b) <- fromBridge bridge
-                writeChan out (Packet $ BS.pack [b])
-
-         return $ Bridge 
-                { toBridge = writeChan ins
-                , fromBridge = readChan out
-                }
--}

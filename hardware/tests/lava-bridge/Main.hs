@@ -39,7 +39,8 @@ example ((inVal,outAck),()) = (leds,(inAck,outVal))
   where
           leds = delay $ latch inVal    -- surpised there is no pause
 
-          (inAck,outVal) = fifo (Witness :: Witness (X0_ ( X0_ ( X0_ ( X0_ ( X0_ ( X0_ ( X0_ ( X0_ ( X0_ ( X0_ ( X256)))))))))))) low (inVal,outAck)
+          (inAck,outVal) = fifo (Witness :: Witness X16) low (inVal,outAck)
+--          (X0_ ( X0_ ( X0_ ( X0_ ( X0_ ( X0_ ( X0_ ( X0_ ( X0_ ( X0_ ( X256)))))))))))) low (inVal,outAck)
 
 {-
           -- always accept
@@ -62,12 +63,14 @@ example ((inVal,outAck),()) = (leds,(inAck,outVal))
 main = do
 --        print (zip test2 (map fromIntegral [0..] :: [Word8]))
 
----        cir <- reifyCircuit (rs232in 9600 crystal :: I (Seq Bool) (Seq Bool) -> O () (Seq (Enabled Word8)))
-        cir <- reifyCircuit (liftWithUART 9600 crystal example)
+---        cir <- reifyCircuit (rs232in speed crystal :: I (Seq Bool) (Seq Bool) -> O () (Seq (Enabled Word8)))
+        cir <- reifyCircuit (liftWithUART speed crystal example)
         let cir0 = cir
 --        cir0 <- optimizeCircuit def cir
         print cir0
 
         writeVhdlCircuit ["work.all","lava.all"] "main" "main.vhd" cir0
+  where
+        speed = 9600 * 12
 
 

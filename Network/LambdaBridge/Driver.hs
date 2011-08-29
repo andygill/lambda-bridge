@@ -8,6 +8,7 @@ import Control.Monad
 import Data.Char(isDigit)
 import qualified Data.Map as Map
 import qualified Data.ByteString as BS
+import Data.ByteString (ByteString)
 
 import Network.LambdaBridge.Bridge
 import Network.LambdaBridge.Timeout
@@ -29,8 +30,7 @@ import Network.LambdaBridge.ARQ
 -- and runs something, typically talking to a board, or virtual hardware.
 -- 
 -- Typically, 'bridge_frame_driver' or 'bridge_byte_driver' will be used to
--- build a driver, from an existing bridge. 'packet_driver' is only
--- used in the case of the 'basic' bridges, building on a reliable 'Packet'.
+-- build a driver, from an existing bridge. 
 --
 -- Drivers are invoked using board_connect, which does a UNIX fork/exec for you.
 
@@ -50,7 +50,7 @@ bundle_driver name cont = do
 
 -- | 'packet_driver' assumes the two FIFO architecture (for now),
 -- one in each direction of the Data-Bridge; the simple case.
-packet_driver :: String -> ([String] -> Int -> Int -> IO ([Packet -> IO ()], [IO Packet])) -> IO ()
+packet_driver :: String -> ([String] -> Int -> Int -> IO ([ByteString -> IO ()], [IO ByteString])) -> IO ()
 packet_driver name bridge_fn = bundle_driver name $ \ args ins outs -> do
 
 
@@ -63,10 +63,12 @@ packet_driver name bridge_fn = bundle_driver name $ \ args ins outs -> do
 --            recvARQ = fromBridge bridge_link
             
 	-- Send first volley, to start the service
-	sendARQ (Packet $ BS.pack [])
+	sendARQ (BS.pack [])
 
 	print (ins,outs)
 
+        -- TODO: update this to work in bigger packets.
+        
 	let hGetSome n = do
 	 	b   <- BS.hGet (head ins) 1
 		bss <- get (n - 1)
@@ -85,7 +87,7 @@ packet_driver name bridge_fn = bundle_driver name $ \ args ins outs -> do
 		  then return ()
 		  else do
 			print ("sending",bs)
-			sendARQ (Packet bs)
+			sendARQ bs
 			reader
 		
 	forkIO $ reader
@@ -93,7 +95,7 @@ packet_driver name bridge_fn = bundle_driver name $ \ args ins outs -> do
 	let writer = do
 		hPutStrLn (head outs) "Hello"
 		threadDelay (1000 * 100)
-		(Packet bs) <- recvARQ
+		bs <- recvARQ
 		print ("recv",bs)
 		BS.hPut (head outs) bs
 		writer
@@ -129,7 +131,7 @@ bridge_frame_driver name limit bridge_fn = packet_driver name $ \ args in_sz out
 
 
 --	-- Send first volley, to start the service
---	sendARQ (Packet $ BS.pack [])
+--	sendARQ (BS.pack [])
 
         return (sendARQs,recvARQs)
 

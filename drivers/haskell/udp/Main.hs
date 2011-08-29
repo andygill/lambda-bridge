@@ -23,7 +23,7 @@ import Network.LambdaBridge.Driver
 import Network.LambdaBridge.Bridge
 import Network.LambdaBridge.Timeout
 
--- This Bridge service uses UDP to send and recieve requests,
+-- This Bridge service uses UDP to send and receive requests,
 -- over (default) port 9237.
 
 -- Remember:

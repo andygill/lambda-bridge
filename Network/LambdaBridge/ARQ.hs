@@ -93,9 +93,9 @@ instance Binary Ack where
 		   0x00 -> return $ Ack packId
 		   0xff -> return $ Free packId
 
-sendWithARQ :: Bridge Frame -> Limit -> IO (Packet -> IO ())
+sendWithARQ :: Bridge Frame -> Limit -> IO (ByteString -> IO ())
 sendWithARQ bridge tm = do
-	toSendVar   <- newEmptyMVar :: IO (MVar Packet)
+	toSendVar   <- newEmptyMVar :: IO (MVar ByteString)
 
 	fastTimeout <- timeout tm
 	slowTimeout <- timeout tm
@@ -103,7 +103,7 @@ sendWithARQ bridge tm = do
 	let putData   = toBridge bridge . toFrame
 
 	let start n = do
-		Packet bs <- takeMVar toSendVar
+		bs <- takeMVar toSendVar
 		ready (FrameData n bs)
 
 	    ready dat@(FrameData n bs) = do
@@ -159,9 +159,9 @@ sendWithARQ bridge tm = do
 
 	return $ putMVar toSendVar 
 
-recvWithARQ :: Bridge Frame -> IO (IO Packet)
+recvWithARQ :: Bridge Frame -> IO (IO ByteString)
 recvWithARQ bridge = do
-	haveRecvVar <- newEmptyMVar :: IO (MVar Packet)
+	haveRecvVar <- newEmptyMVar :: IO (MVar ByteString)
 
 	let getData  = liftM fromFrame $ fromBridge bridge
 	let putAck   = toBridge bridge . toFrame
@@ -180,7 +180,7 @@ recvWithARQ bridge = do
 			putAck (Free m) -- send a free, because this packet is already here
 			start n
 		      else do	-- m == n
-			pushed <- tryPutMVar haveRecvVar $ Packet bs
+			pushed <- tryPutMVar haveRecvVar $ bs
 			if pushed then do
 				putAck (Free n) -- send a free, because we've got and received the packet
 				start (n+1)	-- and wait for the next packet
@@ -191,7 +191,7 @@ recvWithARQ bridge = do
 
 				sync <- newEmptyMVar
 				forkIO $ do
-					putMVar haveRecvVar $ Packet bs
+					putMVar haveRecvVar $ bs
 					putAck (Free m)
 					putMVar sync ()
 				blocked n sync

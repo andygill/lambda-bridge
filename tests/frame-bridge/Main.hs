@@ -31,15 +31,16 @@ import Data.Time.Clock
 
 main :: IO ()
 main = do
-                                                -- 10 bits at 9600 baud
+        print "Testing LambdaBridge Network Lib"
 	(bridge_byte_lhs,bridge_byte_rhs) <- pipeBridge 16 (10/9600) :: IO (Bridge Byte, Bridge Byte)	
 
-	let u = def { pauseU = 0.001
+                                                -- 10 bits at 9600 baud
+	let u = def { pauseU = 10 / 9600 
 		    , loseU = 0.001, dupU = 0.001, mangleU = 0.001, mangler = \ g (Byte a) -> 
 									let (a',_) = random g
 									in Byte (fromIntegral (a' :: Int) + a) }
-	bridge_byte_lhs <- realisticBridge def def bridge_byte_lhs
---	bridge_byte_rhs <- realisticBridge u def bridge_byte_rhs
+	bridge_byte_lhs <- realisticBridge u u bridge_byte_lhs
+	bridge_byte_rhs <- realisticBridge def def bridge_byte_rhs
 
 --	bridge_byte_lhs <- debugBridge "bridge_byte_lhs" bridge_byte_lhs
 --	bridge_byte_rhs <- debugBridge "bridge_byte_rhs" bridge_byte_rhs
@@ -68,14 +69,14 @@ main = do
 
 	forkIO $ let -- loop 1000 = return () -- putMVar stop ()
 	             loop n = do
-			send (toStr $ show (n :: Int))
+			send (toStr $ take 100 $ cycle $ show (n :: Int))
 			loop (succ n)
 		 in loop 0
 
 	forkIO $ let loop = do
 			msg <- recv
 			print ("MSG",msg)
-			if (show msg == "Packet [0x31,0x30,0x30,0x30]") then putMVar stop () else return ()
+			if (show msg == show (take 100 $ cycle $ "1000")) then putMVar stop () else return ()
 --			threadDelay (100 * 1000)
 			loop
 		 in loop
@@ -85,5 +86,5 @@ main = do
 
 	return ()
    where	
-	toStr :: String -> Packet
-	toStr = Packet . BS.pack . map (fromIntegral . ord)
+	toStr :: String -> BS.ByteString
+	toStr = BS.pack . map (fromIntegral . ord)

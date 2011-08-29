@@ -89,7 +89,7 @@ main = do
 		print link
 		sendARQ link
 		case link of
-		   Packet bs | BS.length bs == 0 -> loop (n + 1)
+		   bs | BS.length bs == 0 -> loop (n + 1)
 		   _ -> loop n
 
 	loop 0

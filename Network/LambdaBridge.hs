@@ -44,5 +44,5 @@ board_connect (1,1) argv = do
 	return ([hds !! 0],[hds !! 1])
 board_connect _ _ = error $ "board_connect: only single FIFOs in each direction are currently supported"
 
-foreign import ccall "lb_board_connect.h lb_board_connect" lb_board_connect 
+foreign import ccall unsafe "lb_board_connect.h lb_board_connect" lb_board_connect 
 	:: CInt -> Ptr (Ptr CChar) -> CInt -> CInt -> Ptr CInt -> IO CInt

@@ -36,13 +36,12 @@ data SessionHandle = SessionHandle Socket SockAddr
 -- On linux, we need to give permissions to read/write the TTY,
 -- and 
 --   % stty -F /dev/ttyS0
-
+--   $ stty -F /dev/ttyS0 raw -echo -parity -istrip -parenb cstopb 115200
 
 main = bridge_byte_driver "lb_rs232" (boundLimit 1) $ \ args -> do
    hPutStrLn stderr ("Remote Service:" ++ show args)
    case args of
      [name,tty,speed] -> do
-             
 
              print (name,tty,speed)
              return $ undefined
