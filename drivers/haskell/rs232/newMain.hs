@@ -25,10 +25,11 @@ main = do serialPortHandle <- openSerial port defaultSerialSettings
           bundle_driver "rs232" $ createHandleThreads serialPortHandle
 --          closeSerial serialPortHandle
           
-createHandleThreads :: SerialPort->[String]->[Handle]->[Handle]-> IO
+createHandleThreads :: SerialPort->[String]->[Handle]->[Handle]-> IO ()
 createHandleThreads serialPortHandle args ins outs = do
     sequence $ map (\ x -> forkIO $ rs232recv serialPortHandle x) ins
     sequence $ map (\ x -> forkIO $ rs232send serialPortHandle x) outs
+    return ()
 
 
 {-
@@ -43,7 +44,7 @@ createHandleThreads args ins outs = do let createRecvThreads = map (\ x -> forkI
 rs232recv :: SerialPort->Handle -> IO ()
 rs232recv serialPortHandle h = forever $ do 
     c <- recvChar serialPortHandle
-    if (isJust c) then (hPutChar h $ fromJust c) else ()
+    if (isJust c) then (hPutChar h $ fromJust c) else return ()
 
 rs232send :: SerialPort->Handle -> IO ()
 rs232send serialPortHandle h = forever $ do
