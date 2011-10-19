@@ -23,19 +23,10 @@ import Network.LambdaBridge.Driver
 import Network.LambdaBridge.Bridge
 import Network.LambdaBridge.Timeout
 
--- This Bridge service uses UDP to send and recieve requests,
--- over (default) port 9237.
-
--- Remember:
---   % nc -u -l 9237 | mod
-
-
-data SessionHandle = SessionHandle Socket SockAddr
-
-
 -- On linux, we need to give permissions to read/write the TTY,
 -- and 
---   % stty -F /dev/ttyS0
+--   $ chmod a+rw /dev/ttyS0
+--   $ stty -F /dev/ttyS0
 --   $ stty -F /dev/ttyS0 raw -echo -parity -istrip -parenb cstopb 115200
 
 main = bridge_byte_driver "lb_rs232" (boundLimit 1) $ \ args -> do
@@ -44,30 +35,24 @@ main = bridge_byte_driver "lb_rs232" (boundLimit 1) $ \ args -> do
      [name,tty,speed] -> do
 
              print (name,tty,speed)
-             return $ undefined
-{-
-	case args of
-	  (remote_cmd:hostname:port:style:rest) -> do
-		print $ "got" ++ show (hostname,port,rest)
 
-		let sockType = case style of
-			  "UDP" -> Datagram
-			  "TCP" -> Stream
-			  _     -> error "is this UDP?"
+             -- set up the socket / serial / etc
 
- 		addrinfos <- getAddrInfo 
-                    (Just (defaultHints {addrFlags = [AI_PASSIVE]}))
-                    (Just hostname) (Just port)
-		let serveraddr = head addrinfos
+             let sendChar = undefined 
+                 readChar = undefined
 
-		sock <- socket AF_INET sockType defaultProtocol
+             let writeWord8 :: Word8 -> IO ()
+                 writeWord8 = sendChar . chr . fromIntegral
 
-	 	connect sock $ addrAddress serveraddr
+                 readWord8 :: IO Word8
+                 readWord8 = do
+                        c <- readChar 
+                        return $ fromIntegral $ ord $ c
 
-		return $ Bridge
-			{ toBridge = \ (Frame bs) -> sendAll sock bs
-			, fromBridge = do bs <- recv sock 2048
-					  return $ Frame bs
-			}
-
--}
+             return $ Bridge
+		{ toBridge = \ (Byte b) -> do
+                        writeWord8 b
+		, fromBridge = do 
+		        b <- readWord8
+			return $ Byte b
+		}
