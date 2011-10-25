@@ -67,68 +67,6 @@ fromFrame (Frame fs) = decode (LBS.fromChunks [fs])
 toFrame :: (Binary a) => a -> Frame
 toFrame a = Frame $ BS.concat $ LBS.toChunks $ encode a
 
--- | ''realisticBridge'' is a way of making a 'Bridge' less sterile, for testing purposes.
-realisticBridge :: (Show msg) => Realistic msg -> Realistic msg -> Bridge msg -> IO (Bridge msg)
-realisticBridge send recv sock = do
-	let you :: Float -> IO Bool
-	    you f = do
-		r <- randomIO
-		return $ f > r
-
-	let optMangle f mangle a = do
-		b <- you f
-		if b then do
-			g <- newStdGen
-			return $ mangle g a
-		     else return a 
-	tm <- getCurrentTime
-	tmVar <- newMVar tm
-
-        let unrely :: Realistic msg -> msg -> (msg -> IO ()) -> IO ()
-            unrely opts a k = do
-		tm0 <- takeMVar tmVar	-- old char time
-		tm1 <- getCurrentTime	-- current time
-		let pause = pauseU opts - realToFrac (tm1 `diffUTCTime` tm0)
-		if pause <= 0 then return () else do
-		   threadDelay (floor (pause * 1000 * 1000))
-		   return ()
-		b <- you (loseU opts)
-		if b then return () else do -- ignore if you "lose" the message.
-		  a <- optMangle (mangleU opts) (mangler opts) a
-		  b <- you (dupU send)
-		  if b then do		   -- send twice, please
-		  	k a			
-		  	k a			
-		       else do
-	                k a
-		tm <- getCurrentTime
-		putMVar tmVar tm
-		return ()
-        
-        backChan <- newChan
-
-        forkIO $ forever $ do
-                msg <- fromBridge sock
-                unrely recv msg $ writeChan backChan
-
-  	return $ Bridge
-	  { toBridge = \ a -> unrely send a $ toBridge sock
-	  , fromBridge = readChan backChan -- fromBridge sock
-	  }
-
--- |  ''Realistic'' is the configuration for ''realisticBridge''.
-data Realistic a = Realistic
-	{ loseU 	:: Float	-- ^ lose an 'a'
-	, dupU 		:: Float	-- ^ dup an 'a'
-	, execptionU 	:: Float	-- ^ throw exception instead
-	, pauseU	:: Float	-- ^ what is the pause between things
-	, mangleU 	:: Float	-- ^ mangle an 'a'
-	, mangler :: forall g . (RandomGen g) => g -> a -> a
-	}
-
--- | default instance of 'realistic', which is completely reliable.
-instance Default (Realistic a) where
-	def = Realistic 0 0 0 0 0 (\ g a -> a)
 
 -- | 'debugBridge' outputs to the stderr debugging messages
 -- about what datum is getting send where.
@@ -154,99 +92,64 @@ debugBridge name bridge = do
 			return a
 		}
 
--- | 'loopbackBridge' is a simple reflective loopback. It obeys the basic
--- premise of a bridge; if no-one is listening, then data can get lost.
--- It is in the nature of the bridge; things do not always make it.
 
-loopbackBridge :: IO (Bridge a)
-loopbackBridge = do
-	var <- newEmptyMVar
-	return $ Bridge
-		{ toBridge = \ a -> do
-			putMVar var a
-		, fromBridge = do
-			takeMVar var
-		}
+-- |  ''Realistic'' is the configuration for ''realisticBridge''.
+data Realistic a = Realistic
+	{ loseU 	:: Float	-- ^ lose an 'a'
+	, dupU 		:: Float	-- ^ dup an 'a'
+	, execptionU 	:: Float	-- ^ throw exception instead
+	, pauseU	:: Float	-- ^ what is the pause between things
+	, mangleU 	:: Float	-- ^ mangle an 'a'
+	, mangler       :: Float -> a -> a -- ^ how to mangle, based on a number between 0 and 1
+	}
 
--- | 'pipeBridge' create two ends of a polymorphic 'Bridge'.
--- This link is decoupled, in the sense that if no-one is listening,
--- then the element in transport gets dropped.
+-- | default instance of 'realistic', which is completely reliable.
+instance Default (Realistic a) where
+	def = Realistic 0 0 0 0 0 (\ g a -> a)
 
-pipeBridge :: (Show a) => Int -> Float -> IO (Bridge a, Bridge a)
-pipeBridge max_len delay = do
-        sending <- newEmptyMVar
-        recving <- newEmptyMVar
+connectBridges :: (Show msg) => Bridge msg -> Realistic msg -> Realistic msg -> Bridge msg -> IO ()
+connectBridges lhs lhsOut rhsOut rhs = do
+	let you :: Float -> IO Bool
+	    you f = do
+		r <- randomIO
+		return $ f > r
 
-        sending' <- newChan
-        recving' <- newChan
-
-        tm <- getCurrentTime
-
-        -- We want the sending process to *wait* until we are ready to send
-        let transport tm0 extra from to = do
-                v <- takeMVar from
-                writeChan to v
-                -- Now I've send the packet, how long do I wait before sending
-                -- the next one?
-                tm1 <- getCurrentTime
-                let diff :: Float
-                    diff = fromRational (toRational (tm1 `diffUTCTime` tm0))
-
-                let extra1 = max (extra + delay - diff) 0
-
---                print (extra1,extra,delay,diff)
-
-                when (extra1 > 0.02) $ do
-                        threadDelay (floor (extra1 * 1000 * 1000))
-                                                                   
-                transport tm1 (extra1 * 0.99) from to
-
-        forkIO $ transport tm 0 sending sending'
-        forkIO $ transport tm 0 recving recving'
-
-	let b1 = Bridge
-		{ toBridge   = putMVar sending
-		, fromBridge = readChan recving'
-		}
-	let b2 = Bridge
-		{ toBridge   = putMVar recving
-		, fromBridge = readChan sending'
-		}
-
-	return (b1,b2)
+	let optMangle f mangle a = do
+		b <- you f
+		if b then do
+		        r <- randomIO 
+			return $ mangle r a
+		     else return a 
 
 
-stubBridge :: [a] -> IO (Bridge a)
-stubBridge recv = do
-	var <- newMVar recv
-	return $ Bridge
-		{ toBridge = \ a -> return ()
-		, fromBridge = do
-			(r:rs) <- takeMVar var
-			putMVar var rs
-			return r
-		}
+        let unrely :: MVar UTCTime -> Realistic msg -> msg -> (msg -> IO ()) -> IO ()
+            unrely tmVar opts a k = do
+		tm0 <- takeMVar tmVar	-- old char time
+		tm1 <- getCurrentTime	-- current time
+		let pause = pauseU opts - realToFrac (tm1 `diffUTCTime` tm0)
+		if pause <= 0 then return () else do
+		   threadDelay (floor (pause * 1000 * 1000))
+		   return ()
+		b <- you (loseU opts)
+		if b then return () else do -- ignore if you "lose" the message.
+		  a <- optMangle (mangleU opts) (mangler opts) a
+		  b <- you (dupU opts)
+		  if b then do		   -- send twice, please
+		  	k a			
+		  	k a			
+		       else do
+	                k a
+		tm <- getCurrentTime
+		putMVar tmVar tm
+		return ()
 
+	tm <- getCurrentTime
+	tmVar1 <- newMVar tm
+	tmVar2 <- newMVar tm
 
-basicByteBridge :: ([Maybe Word8] -> [Maybe Word8]) -> IO (Bridge Byte)
-basicByteBridge fn = do
-        ins <- newEmptyMVar :: IO (MVar Byte)
-        out <- newEmptyMVar :: IO (MVar Byte)
-
-        let prod :: IO [Maybe Word8]
-            prod = unsafeInterleaveIO $ do
-	                x <- tryTakeMVar ins
-	                xs <- prod
-	                return (fmap (\ (Byte w) -> w) x:xs)
-
-        inp <- prod
-
-        let res = fn inp
-
-        forkIO $ sequence_ [ putMVar out (Byte b) | Just b <- res ]
-
-        return $ Bridge 
-                { toBridge = putMVar ins
-                , fromBridge = takeMVar out
-                }
-
+        forkIO $ forever $ do
+                msg <- fromBridge lhs
+                unrely tmVar1 lhsOut msg $ toBridge rhs
+        forever $ do
+                msg <- fromBridge rhs
+                unrely tmVar2 rhsOut msg $ toBridge lhs

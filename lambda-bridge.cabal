@@ -52,10 +52,10 @@ Executable lb_byte
    Main-Is: Main.hs
 
 -- And the tools
-Executable lb_simulator
+Executable lb_bridge
    Build-Depends: base >= 4 && < 5, binary, bytestring, random, time, data-default, containers, stm, network, directory
-   Hs-Source-Dirs: . tools
-   Main-Is: Simulator.hs
+   Hs-Source-Dirs: . tools/bridge
+   Main-Is: Main.hs
    GHC-Options: -threaded 
 
 
