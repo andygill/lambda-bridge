@@ -15,14 +15,17 @@ main :: IO ()
 main = do
         args <- getArgs
         case args of
-          [dest]             -> loopback dest $ \ c -> [c]
-          ["--toupper",dest] -> loopback dest $ \ c -> [toUpper c]
-          otherwise -> error "usage: lb_loopback [--toupper] loopback-socket"
+          [dest]             -> loopback dest $ \ c -> return [c]
+          ["--toupper",dest] -> loopback dest $ \ c -> return [toUpper c]
+          ["--debug",dest]   -> loopback dest $ \ c -> do putStrLn $ "loopback: " ++ show c ++ " (" ++ show (ord c) ++ ")"
+                                                          return [c]
+          otherwise -> error "usage: lb_loopback [--toupper|--debug] loopback-socket"
 
-loopback :: String -> (Char -> String) -> IO ()
+loopback :: String -> (Char -> IO String) -> IO ()
 loopback dest reflect = openServer dest $ \ hd -> do
         hSetBuffering hd NoBuffering
         forever $ do
                 ch <- hGetChar hd
-                hPutStr hd (reflect ch)
+                str <- reflect ch
+                hPutStr hd str
 
