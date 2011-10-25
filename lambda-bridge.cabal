@@ -46,9 +46,9 @@ Executable lb_udp
    Hs-Source-Dirs: 	.  drivers/haskell/udp
    Main-Is: Main.hs
 
-Executable lb_cat
-   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default, containers, stm
-   Hs-Source-Dirs: 	.  drivers/haskell/cat
+Executable lb_loopback
+   Build-Depends: 	base >= 4 && < 5, network >= 2.3, directory
+   Hs-Source-Dirs: 	.  drivers/loopback
    Main-Is: Main.hs
 
 Executable lb_rs232
@@ -102,5 +102,13 @@ Executable test-frame-bridge
    Build-Depends: 	base >= 4 && < 5, binary, bytestring, random, time, data-default, containers, stm
    Hs-Source-Dirs: 	. tests/frame-bridge
    Main-Is: Main.hs
+   GHC-Options: -threaded 
+
+----------------------------------------------------------------
+
+Executable lb_simulator
+   Build-Depends: base >= 4 && < 5, binary, bytestring, random, time, data-default, containers, stm, network, directory
+   Hs-Source-Dirs: . tools
+   Main-Is: Simulator.hs
    GHC-Options: -threaded 
 

@@ -1,0 +1,19 @@
+Here is a summary of the lambda-bridge protocol.
+
+Standard Lambda Bridge Socket:
+* Open the port
+* Send bytes, receive bytes
+* (To check) or send pkts, receive pkts
+* 1 input, 1 output FIFO / pipe
+
+Byte-based Lambda Bridge Socket (for example, 232)
+* Open the port
+* Sends byte-ized packets
+* Waits for Acks
+
+Packet-based Lambda Bridge Socket (for example, 232)
+* Open the port
+* Sends packets
+* Waits for Acks
+
+
