@@ -52,7 +52,7 @@ Executable lb_cat
    Main-Is: Main.hs
 
 Executable lb_rs232
-   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default, containers, stm
+   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default, containers, stm, serialport
    Hs-Source-Dirs: 	.  drivers/haskell/rs232
    Main-Is: Main.hs
 
