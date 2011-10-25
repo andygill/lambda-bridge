@@ -46,26 +46,7 @@ crc code start bs = foldl (\ crc b ->
 
 -- | The maximum frame payload size, not including CRCs or headers, pre-stuffed.
 maxFrameSize :: Int
-maxFrameSize = 238
-
--- This attempts all possible headers, and checks to see if there are any 
--- 0xf1's (the tag) appearing in the size or checksum. Not exported.
-
-sanityCheck = 
-	[
-	       let v = crc (0x1021 :: Word16) 0xffff [tag,sz,0,0]
-	           b = fromIntegral (v `div` 256) :: Word8
-	           a = fromIntegral v :: Word8
- 	           v' = crc (0x1021 :: Word16) 0xffff [tag,sz,b,a]
-               in if a == tag || b == tag || sz == tag || v' /= 0
-	       then show (showH b,showH a,showH v',sz)
-	       else "-" -- good outcome
-
-	 | sz <- [0..fromIntegral maxFrameSize]
-	 ]
-  where
-	tag :: Word8
-	tag = 0xf1
+maxFrameSize = 254
 
 -----------------------------------------------------------------------
 -- | 'frameProtocol' provides a Bridge Frame Frame from the services of a 'Bridge Byte'.
@@ -199,48 +180,3 @@ frameProtocol byte_bridge = do
 
 
 
------------------------------------------------------------------------
-
-
--- example1: CRC-CCITT (0x1D0F)	0xE5CC
--- starts with 0xffff, 0x1D0F is output if no input
--- or appending 
-
-example1 = [49..57]
-example1_crc = crc (0x1021 :: Word16) 0xffff (example1 ++ [0,0])
-
-example2 = example1 ++ [0xe5,0xcc]
-example2_crc = crc (0x1021 :: Word16) 0xffff example2
-
-showH x = "0x" ++ showHex x ""
-
-
-main :: IO ()
-main = do
-	bridge_byte0 <- loopbackBridge
-	
-	bridge_byte1 <- debugBridge "bridge_byte" bridge_byte0
-	let u = def { loseU = 0.01, dupU = 0.01, mangleU = 0.01, mangler = \ g (Byte a) -> 
-									let (a',_) = random g
-									in Byte (fromIntegral (a' :: Int) + a) }
-	bridge_byte2 <- realisticBridge def def bridge_byte0
-
---	sequence_ [ toBridge bridge_byte' x | x <- [0..255]]
-
-	bridge_frame <- frameProtocol bridge_byte2
-
-	forkIO $ do
-		sequence [ toBridge bridge_frame $ Frame (toStr $ "Frame: " ++ show i ++ " " ++ [' '..'~'] ++ [chr 0xf1])
-			 | i <- [1..]
-			 ]
-		return ()
-		
-	sequence [ do
-		frame <- fromBridge bridge_frame
-		print frame
-			| _ <- [1..1000]]
-
-	return ()
-  where
-	toStr :: String -> BS.ByteString
-	toStr = BS.pack . map (fromIntegral . ord)
