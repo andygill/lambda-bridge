@@ -41,12 +41,6 @@ Library
   Include-Dirs:        connect                       
 
 -- Now the drivers.
-
-Executable lb_udp
-   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default, containers, stm
-   Hs-Source-Dirs: 	.  drivers/haskell/udp
-   Main-Is: Main.hs
-
 Executable lb_loopback
    Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default, containers, stm, directory
    Hs-Source-Dirs: 	.  drivers/loopback
@@ -57,64 +51,11 @@ Executable lb_byte
    Hs-Source-Dirs: 	.  drivers/byte
    Main-Is: Main.hs
 
-Executable lb_rs232
-   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default, containers, stm, serialport
-   Hs-Source-Dirs: 	.  drivers/haskell/rs232
-   Main-Is: Main.hs
-
--- And the runners
-
-Executable udp_lbshell
-   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default, containers, stm
-   Hs-Source-Dirs: 	.  runners/udp_lbshell
-   C-Sources:           connect/lb_board_connect.c
-   Include-Dirs:        connect
-   Main-Is: Main.hs
-
--- And examples
-
-Executable haskell-cat
-   Build-Depends: 	base >= 4 && < 5, random, time, data-default
-   Hs-Source-Dirs: 	.  examples/haskell/cat
-   C-Sources:           connect/lb_board_connect.c
-   Include-Dirs:        connect
-   Main-Is: Main.hs
-
-Executable haskell-udp
-   Build-Depends: 	base >= 4 && < 5, random, time, data-default
-   Hs-Source-Dirs: 	.  examples/haskell/udp
-   C-Sources:           connect/lb_board_connect.c
-   Include-Dirs:        connect
-   Main-Is: Main.hs
-
--- TO MOVE/RE-MOVE
-Executable haskell-test3
-   Build-Depends: 	base >= 4 && < 5, binary, bytestring, random, time, data-default, containers, stm
-   Hs-Source-Dirs: 	.  examples/haskell-test3
-   C-Sources:           connect/lb_board_connect.c
-   Include-Dirs:        connect
-   Main-Is: Main.hs
-
-Executable haskell-rs232
-   Build-Depends: 	base >= 4 && < 5, binary, bytestring, random, time, data-default, containers, stm
-   Hs-Source-Dirs: 	. examples/haskell/rs232
-   C-Sources:           connect/lb_board_connect.c
-   Main-Is: Main.hs
---   GHC-Options: 
-
--- And the tests
-
-Executable test-frame-bridge
-   Build-Depends: 	base >= 4 && < 5, binary, bytestring, random, time, data-default, containers, stm
-   Hs-Source-Dirs: 	. tests/frame-bridge
-   Main-Is: Main.hs
-   GHC-Options: -threaded 
-
-----------------------------------------------------------------
-
+-- And the tools
 Executable lb_simulator
    Build-Depends: base >= 4 && < 5, binary, bytestring, random, time, data-default, containers, stm, network, directory
    Hs-Source-Dirs: . tools
    Main-Is: Simulator.hs
    GHC-Options: -threaded 
+
 
