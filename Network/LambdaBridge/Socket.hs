@@ -40,6 +40,18 @@ openAsServer nm callback =
                        callback hd)
                 (removeFile nm)
 
+-- | 'openOnceAsServer' is a version of openAsServer than only opens the socket
+-- for a single connection, after waiting for the connection.
+
+openOnceAsServer :: SocketName -> IO Handle
+openOnceAsServer nm = do
+        finally (do sock <- listenOn $ UnixSocket nm
+                    print "accepting"
+                    (hd,_host,_port) <- accept sock
+                    print "acceped"
+                    return hd)
+                (removeFile nm)
+
 -- | Turn a (Socket) 'Handle' into a Bridge (of) Byte
 openByteBridge :: Handle -> IO (Bridge Byte)
 openByteBridge hd = do
