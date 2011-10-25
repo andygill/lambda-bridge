@@ -11,21 +11,27 @@ import Data.Char
 
 import Network.LambdaBridge.Bridge
 
+-- 'SocketName' is the name of a UNIX socket,
+-- or a number (for a TCP/IP port ID).
+--
+-- When using make a remote connection, a colon can be used: "drumchapel:1234"
 
--- | 'openClient' opens a (remote or local) socket, and returns the UNIX handle for the socket.
-openClient :: String -> IO Handle
-openClient nm = connectTo "localhost" $ UnixSocket nm
+type SocketName = String
+
+-- | 'openAsClient' opens a (remote or local) socket, and returns the UNIX handle for the socket.
+openAsClient :: SocketName -> IO Handle
+openAsClient nm = connectTo "localhost" $ UnixSocket nm
 
 
--- | 'openServer' creates a socket, listens to the socket, 
+-- | 'openAsServer' creates a socket, listens to the socket, 
 -- and calls a callback when the socket is connected to.
 -- The callback may be invoked multiple times.
--- 'openServer' does not start listening for new connections until the callback from
+-- 'openAsServer' does not start listening for new connections until the callback from
 -- a specific connection has returned. 
--- The call to openServer never terminates.
+-- The call to openAsServer never terminates.
 
-openServer :: String -> (Handle -> IO ()) -> IO ()
-openServer nm callback =
+openAsServer :: SocketName -> (Handle -> IO ()) -> IO ()
+openAsServer nm callback =
         finally (do sock <- listenOn $ UnixSocket nm
                     forever $ do 
                        print "accepting"
@@ -42,5 +48,3 @@ openByteBridge hd = do
                          return (Byte (fromIntegral (ord ch)))
             writing (Byte x) = hPutChar hd (chr (fromIntegral x))
         return $ Bridge writing reading
-
-        

@@ -21,14 +21,14 @@ main = do
 
 lb_byte :: String -> String -> IO ()
 lb_byte src dest = do
-        srcH <- openClient src
+        srcH <- openAsClient src
         srcB <- openByteBridge srcH
         frameB <- frameProtocol srcB
         let limit = boundLimit 1
         let pktSize = 100
         sender <- sendWithARQ frameB limit
         recver <- recvWithARQ frameB
-        openServer dest $ \ destH -> do
+        openAsServer dest $ \ destH -> do
                 hSetBuffering destH NoBuffering
                 forkIO $ forever $ do 
                         bs <- B.hGetSome destH pktSize

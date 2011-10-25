@@ -24,7 +24,7 @@ main = do
           otherwise -> error "usage: lb_simulator byte|packet imported-socket exported-socket"
 
 packetSim :: String -> String -> IO ()
-packetSim src dest = openServer dest $ \ destH -> do
+packetSim src dest = openAsServer dest $ \ destH -> do
 --        destH <- openSocket dest
         hPutStrLn destH "Hello,1 World"
         print (src,destH)
@@ -32,14 +32,14 @@ packetSim src dest = openServer dest $ \ destH -> do
 {-
 byteSim :: String -> String -> IO ()
 byteSim src dest = do
-        srcH <- openClient src
+        srcH <- openAsClient src
         srcB <- openByteBridge srcH
         frameB <- frameProtocol srcB
         let limit = boundLimit 1
         let pktSize = 100
         sender <- sendWithARQ frameB limit
         recver <- recvWithARQ frameB
-        openServer dest $ \ destH -> do
+        openAsServer dest $ \ destH -> do
                 hSetBuffering destH NoBuffering
                 forkIO $ forever $ do 
                         bs <- B.hGetSome destH pktSize
@@ -55,9 +55,9 @@ byteSim src dest = do
 
 byteSim :: String -> String -> IO ()
 byteSim src dest = do
-        srcH <- openClient src
+        srcH <- openAsClient src
         hSetBuffering srcH NoBuffering
-        openServer dest $ \ destH -> do
+        openAsServer dest $ \ destH -> do
                 destB <- openByteBridge destH
                 frameB <- frameProtocol destB
                 let limit = boundLimit 1

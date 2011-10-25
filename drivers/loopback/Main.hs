@@ -22,7 +22,7 @@ main = do
           otherwise -> error "usage: lb_loopback [--toupper|--debug] loopback-socket"
 
 loopback :: String -> (Char -> IO String) -> IO ()
-loopback dest reflect = openServer dest $ \ hd -> do
+loopback dest reflect = openAsServer dest $ \ hd -> do
         hSetBuffering hd NoBuffering
         forever $ do
                 ch <- hGetChar hd
