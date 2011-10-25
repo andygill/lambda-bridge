@@ -21,11 +21,5 @@ Directory Structure
     * udp_lbshell -- Allows the remote invocation of lambda-bridge commands.
     * stdio_lbshell -- Allows a lambda bridge driver to be used via stdio and the UNIX shell (TOBEDONE)
 
-In order to use the lambda bridge, you need to set the PATH environment variable, 
-to find the bridges. For example
-
-% export PATH=$PATH:`pwd`/dist/build/lb_cat
-
 If you use the lava-lambda-bridge package, which contains the Kansas Lava sources for the
 network stack in hardware, then you may want to put it into the subdirectory 'hardware'.
-
