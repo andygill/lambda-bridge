@@ -15,8 +15,34 @@ import Network.LambdaBridge.Timeout
 import Network.LambdaBridge.Multiplex
 import Network.LambdaBridge.Frame
 import Network.LambdaBridge.ARQ
+import Network.LambdaBridge.Socket
 
 
+byte_driver :: Bridge Byte      -- ^ the ability to send and receive bytes downstream
+            -> Float            -- ^ The MAX timeout size, in seconds.
+            -> Int              -- ^ The MAX packet size.
+            -> String           -- ^ The name of the socket we make for this driver
+            -> IO ()            -- ^ never returns.
+byte_driver bridge maxTime maxPacket socketName = do
+        frameB <- frameProtocol bridge
+        let limit = boundLimit maxTime
+        sender <- sendWithARQ frameB limit
+        recver <- recvWithARQ frameB
+        openAsServer socketName $ \ destH -> do
+                hSetBuffering destH NoBuffering
+                hSetBinaryMode destH True     -- I think this is done anyway
+                forkIO $ forever $ do 
+                        bs <- BS.hGetSome destH maxPacket
+                        print bs
+                        sender bs
+                        print "send str"
+                forkIO $ forever $ do 
+                        bs <- recver 
+                        print ("recv",bs)
+                        BS.hPut destH bs
+                return ()
+
+{-
 -- | 'bundle_driver' builds a driver.  A driver is a stand-alone UNIX process.
 -- A Haskell program should never call bundle_driver directly, 
 --  so a typical use is
@@ -143,3 +169,4 @@ bridge_byte_driver name limit bridge_fn = bridge_frame_driver name limit $ \ arg
 	-- and return the higher level frame protocol	
         frameProtocol bridge_byte
 
+-}
