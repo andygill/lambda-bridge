@@ -103,17 +103,18 @@ reading character for the 'Bridge Byte', and the 'Bridge Byte' itself.
 
 frameProtocol :: Bridge Byte -> IO (Bridge Frame)
 frameProtocol byte_bridge = do
-	let tag = 0xf1 :: Word8
+	let tag = 0xfe :: Word8
+	    tag_stuffing = 0xff :: Word8
 
 	-----------------------------------------------------------------------------
 	sending <- newEmptyMVar
 
 	let write wd = toBridge byte_bridge (Byte wd)
 
-	let writeWithCRC stuffing xs = do
+	let writeWithCRC xs = do
 		let crc_val = crc (0x1021 :: Word16) 0xffff (xs ++ [0,0])
 		sequence_ [ do write x
-			       if x == tag && stuffing then write 0xff else return ()
+			       if x == tag then write tag_stuffing else return ()
 			  | x <- xs ++ [ fromIntegral $ crc_val `div` 256
 				       , fromIntegral $ crc_val `mod` 256
 				       ]
@@ -122,10 +123,9 @@ frameProtocol byte_bridge = do
 
 	let sender = do
 		bs <- takeMVar sending
-		let hdr :: [Word8]
-		    hdr = [tag,fromIntegral $ BS.length bs]
-		writeWithCRC False hdr
-		writeWithCRC True (BS.unpack bs)
+                write tag
+                write (fromIntegral $ BS.length bs)
+		writeWithCRC (BS.unpack bs)
 		sender
 		
 	forkIO $ sender
@@ -143,20 +143,16 @@ frameProtocol byte_bridge = do
 	    findHeader = do
 		wd0 <- read	-- the first byte of a packet can wait as long as you like
 		wd1 <- read
-		wd2 <- read
-		wd3 <- read
-		findHeader' wd0 wd1 wd2 wd3
+		findHeader' wd0 wd1 
 		
 	    -- you already have the first byte
-	    findHeader' :: Word8 -> Word8 -> Word8 -> Word8 -> IO ()
-	    findHeader' wd0 wd1 wd2 wd3 
---		| wd0 == 0xf1 && wd1 == 0 && trace "0xf1" False = undefined
-		| wd0 == 0xf1
-		  && fromIntegral wd1 <= maxFrameSize 
-		  && checkCRC [wd0,wd1,wd2,wd3] = findPayload (fromIntegral wd1)
+	    findHeader' :: Word8 -> Word8 -> IO ()
+	    findHeader' wd0 wd1 
+		| wd0 == tag && fromIntegral wd1 <= maxFrameSize 
+		  = findPayload (fromIntegral wd1)
 		| otherwise = do
-			wd4 <- read
-	    		findHeader' wd1 wd2 wd3 wd4
+			wd2 <- read
+	    		findHeader' wd1 wd2 
 
 	    readWithPadding :: IO Word8
 	    readWithPadding = do
@@ -164,11 +160,10 @@ frameProtocol byte_bridge = do
 
 		if wd1 == tag then 
 			do wd2 <- read
-			   if wd2 == 0xff then return wd1 else do
-				wd3 <- read
-				wd4 <- read
-				findHeader' wd1 wd2 wd3 wd4
-				fail "trampoline (hack to clear stack)"
+			   if wd2 == tag_stuffing then return wd1 else do
+                                -- aborting this packet, start new packet
+				findHeader' wd1 wd2
+				fail "trampoline (clear stack, which contains the old, aborted half-packet)"
 		    else do
 			return wd1
 
@@ -179,7 +174,7 @@ frameProtocol byte_bridge = do
 		xs <- sequence  [ readWithPadding
 		 		| i <- [1..(sz + 2)]
 				]
---		print xs
+		print xs
 		if checkCRC xs then putMVar recving (Frame (BS.pack (take sz xs)))
 			       else return ()
 --		print xs
