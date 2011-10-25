@@ -47,8 +47,13 @@ Executable lb_udp
    Main-Is: Main.hs
 
 Executable lb_loopback
-   Build-Depends: 	base >= 4 && < 5, network >= 2.3, directory
+   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default, containers, stm, directory
    Hs-Source-Dirs: 	.  drivers/loopback
+   Main-Is: Main.hs
+
+Executable lb_byte
+   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring, random, time, data-default, containers, stm, directory
+   Hs-Source-Dirs: 	.  drivers/byte
    Main-Is: Main.hs
 
 Executable lb_rs232
