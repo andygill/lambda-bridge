@@ -77,8 +77,7 @@ using the pair of bytes 0xf1 0xff (which will never occur in a header).
 In this way, if a byte is lost, the next header can be found
 by scaning for 0xf1 N, where N <= 238.
 
-The two arguments for 'frameProtocol' are the timeout in seconds for
-reading character for the 'Bridge Byte', and the 'Bridge Byte' itself.
+The argumentsfor 'frameProtocol' is the 'Bridge Byte' we uses to send the byte stream .
 
 -}
 
@@ -143,6 +142,7 @@ frameProtocol byte_bridge = do
 			do wd2 <- read
 			   if wd2 == tag_stuffing then return wd1 else do
                                 -- aborting this packet, start new packet
+--                                print ("aborting packet (bad stuffing)")
 				findHeader' wd1 wd2
 				fail "trampoline (clear stack, which contains the old, aborted half-packet)"
 		    else do
@@ -156,7 +156,8 @@ frameProtocol byte_bridge = do
 		 		| i <- [1..(sz + 2)]
 				]
 		if checkCRC xs then putMVar recving (Frame (BS.pack (take sz xs)))
-			       else return ()
+			       else do -- print "frame CRC failure"
+			               return ()
 --		print xs
 		return ()
 
@@ -172,7 +173,7 @@ frameProtocol byte_bridge = do
 	return $ Bridge 
 		{ toBridge = \ (Frame bs) ->
 			if BS.length bs > maxFrameSize
-			then fail "packet exceeded max frame size"
+			then fail ("packet exceeded max frame size of " ++ show maxFrameSize)
 			else putMVar sending bs
 		, fromBridge = takeMVar recving
 		}
