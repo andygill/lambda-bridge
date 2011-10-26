@@ -26,19 +26,15 @@ byte_driver :: Bridge Byte      -- ^ the ability to send and receive bytes downs
 byte_driver bridge maxTime maxPacket socketName = do
         frameB <- frameProtocol bridge
         let limit = boundLimit maxTime
-        sender <- sendWithARQ frameB limit
-        recver <- recvWithARQ frameB
+        arqB <- arqProtocol frameB limit
         openAsServer socketName $ \ destH -> do
                 hSetBuffering destH NoBuffering
                 hSetBinaryMode destH True     -- I think this is done anyway
                 forkIO $ forever $ do 
                         bs <- BS.hGetSome destH maxPacket
-                        print bs
-                        sender bs
-                        print "send str"
+                        toBridge arqB bs
                 forkIO $ forever $ do 
-                        bs <- recver 
-                        print ("recv",bs)
+                        bs <- fromBridge arqB
                         BS.hPut destH bs
                 return ()
 

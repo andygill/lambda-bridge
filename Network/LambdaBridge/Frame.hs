@@ -155,7 +155,6 @@ frameProtocol byte_bridge = do
 		xs <- sequence  [ readWithPadding
 		 		| i <- [1..(sz + 2)]
 				]
-		print xs
 		if checkCRC xs then putMVar recving (Frame (BS.pack (take sz xs)))
 			       else return ()
 --		print xs

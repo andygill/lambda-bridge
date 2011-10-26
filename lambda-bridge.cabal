@@ -58,4 +58,9 @@ Executable lb_bridge
    Main-Is: Main.hs
    GHC-Options: -threaded 
 
+Executable lb_bootstrap
+   Build-Depends: base >= 4 && < 5, binary, bytestring, random, time, data-default, containers, stm, network, directory
+   Hs-Source-Dirs: . tools/bootstrap
+   Main-Is: Main.hs
+   GHC-Options: -threaded 
 

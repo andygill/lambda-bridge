@@ -15,6 +15,8 @@ import Network.LambdaBridge.Frame
 import Network.LambdaBridge.Timeout
 import Network.LambdaBridge.ARQ
 
+-- This is where most of the testing will go on.
+
 main :: IO ()
 main = do
         args <- getArgs
@@ -32,6 +34,19 @@ buildBridge lhs rhs = do
         hd1 <- takeMVar lhsV
         hd2 <- takeMVar rhsV
 
+        hSetBuffering hd1 NoBuffering
+        hSetBuffering hd2 NoBuffering
+
+        forkIO $ forever $ do
+                bs <- B.hGetSome hd1 4096
+                B.hPut hd2 bs
+
+        forever $ do
+                bs <- B.hGetSome hd2 4096
+                B.hPut hd1 bs
+
+        
+
         bridge1 <- openByteBridge hd1
         bridge2 <- openByteBridge hd2
 
@@ -40,6 +55,6 @@ buildBridge lhs rhs = do
                        , mangler = \ r (Byte a) -> Byte (floor (r * 256) + a) 
 			}
 
-        connectBridges bridge1 real real bridge2
+        connectBridges bridge1 def def bridge2
 
         return ()
