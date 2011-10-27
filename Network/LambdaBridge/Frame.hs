@@ -17,32 +17,56 @@ import Numeric
 import Data.Char
 import Data.Default
 
-
 import Network.LambdaBridge.Bridge
 
 import System.Random
 import Debug.Trace
 
+{-
 
+From http://en.wikipedia.org/wiki/Computation_of_CRC
+
+If the data is destined for serial communication, it is best to use the bit ordering the data
+will ultimately be sent in. This is because a CRC's ability to detect burst errors is based on
+proximity in the message polynomial M(x); if adjacent polynomial terms are not transmitted
+sequentially, a physical error burst of one length may be seen as a longer burst due to the
+rearrangement of bits.
+
+For example, both IEEE 802 (ethernet) and RS-232 (serial port) standards specify
+least-significant bit first (little-endian) transmission, so a software CRC implementation to
+protect data sent across such a link should map the least significant bits in each byte to
+coefficients of the highest powers of x. On the other hand, floppy disks and most hard drives
+write the most significant bit of each byte first.
+
+We can test things with:
+
+  http://www.lammertbies.nl/comm/info/crc-calculation.html
+  
+But we insert the bits in the order used for 232 transmission (so the results are different)
+
+-}
 
 -- | Compute the crc for a sequence of bytes.
 -- The arguments for 'crc' are the crc code, and the initial value, often -1.
 --
 --For example, CRC-16-CCITT, which is used for 'Frame', is crc 0x1021 0xffff.
+-- (or use 0x84cf as the start)
 
 crc :: (Bits w) => w -> w -> [Word8] -> w
-crc code start bs = foldl (\ crc b -> 
+crc code start bs = id
+                 $ foldl (\ crc b -> 
 			     let b' = if b then 1 else 0
-				 crc' = (crc `shiftL` 1) `xor` b'
-			     in if crc `testBit` (bitSize crc - 1)
+				 crc' = (crc `shiftR` 1) `xor` (b' `shiftL` (width - 1))  
+			     in if crc `testBit` 0
 				then crc' `xor` code
 			        else crc'
 		 ) start
 		 $ concat [  [ b `testBit` i
-			    | i <- reverse [0..7]
+			    | i <- [0..7]
 			    ] 
 			  | b <- bs
 			  ]
+  where width = bitSize code
 
 -- | The maximum frame payload size, not including CRCs or headers, pre-stuffed.
 maxFrameSize :: Int
@@ -92,11 +116,11 @@ frameProtocol byte_bridge = do
 	let write wd = toBridge byte_bridge (Byte wd)
 
 	let writeWithCRC xs = do
-		let crc_val = crc (0x1021 :: Word16) 0xffff (xs ++ [0,0])
+		let crc_val = crc (0x8408 :: Word16) 0xffff (xs ++ [0,0])
 		sequence_ [ do write x
 			       if x == tag then write tag_stuffing else return ()
-			  | x <- xs ++ [ fromIntegral $ crc_val `div` 256
-				       , fromIntegral $ crc_val `mod` 256
+			  | x <- xs ++ [ fromIntegral $ crc_val `mod` 256
+				       , fromIntegral $ crc_val `div` 256
 				       ]
 			 ]
 
@@ -117,7 +141,7 @@ frameProtocol byte_bridge = do
 	let read = do Byte wd <- fromBridge byte_bridge
 		      return wd
 
-	let checkCRC xs = crc (0x1021 :: Word16) 0xffff xs == 0 
+	let checkCRC xs = crc (0x8408 :: Word16) 0xffff xs == 0 
 
 	let findHeader :: IO ()
 	    findHeader = do
