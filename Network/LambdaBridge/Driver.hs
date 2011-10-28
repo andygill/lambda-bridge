@@ -108,7 +108,6 @@ packet_driver name bridge_fn = bundle_driver name $ \ args ins outs -> do
 		if BS.null bs
 		  then return ()
 		  else do
-			print ("sending",bs)
 			sendARQ bs
 			reader
 		
@@ -118,7 +117,6 @@ packet_driver name bridge_fn = bundle_driver name $ \ args ins outs -> do
 		hPutStrLn (head outs) "Hello"
 		threadDelay (1000 * 100)
 		bs <- recvARQ
-		print ("recv",bs)
 		BS.hPut (head outs) bs
 		writer
 		
