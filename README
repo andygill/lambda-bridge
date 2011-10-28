@@ -8,21 +8,29 @@ Directory Structure
  * drivers -- The lambda-bridge device driver, in user-space. They are implemented
    as stand alone user processes that are pre-invoked before calling the connect function,
   
-   By convention, the lambda-bridge driver binaries start with lb_.
+   By convention, the lambda-bridge driver binaries start with lb_. All generate a connectable socket.
 
-   * Current drivers; all generate a connectable socket.
+   * Current drivers
 
-   lb_byte	- generic byte-level transfer protocol, connects via (low-level) sockets
-   lb_loopback	- loopback driver, just reflects the data sent straight back 
    lb_rs232	- the 232 driver, connects via a 232 cabal
 
    * Future drivers
 
    lb_udp       - generic packet-level transfer protocol, connects via UDP packets.
-
-   ** External drivers (These are other hackage packages)
-
    lb_usb	- connect over a USB 2.0 [in lambda-bridge-usb] 
+
+   * Toy/Example/Debugging drivers
+
+   lb_byte	- generic byte-level transfer protocol, connects via (low-level) sockets
+   lb_loopback	- loopback driver, just reflects the data sent straight back
+
+
+ * cores -- Cores (VHDL code) to implement the lambda-bridge.
+   
+   For every driver, there is a directory that contains VHDL code.
+
+     cores
+      +- rs232
 
  * tools - Tools used to test and/or build the lambda bridge.
  
