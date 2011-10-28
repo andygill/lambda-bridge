@@ -23,7 +23,7 @@ import Network.LambdaBridge.Socket
 byte_driver :: Bridge Byte      -- ^ the ability to send and receive bytes downstream
             -> Float            -- ^ The MAX timeout size, in seconds.
             -> Int              -- ^ The MAX packet size.
-            -> String           -- ^ The name of the socket we make for this driver
+            -> SocketName       -- ^ The name of the socket we make for this driver
             -> IO ()            -- ^ never returns.
 byte_driver bridge maxTime maxPacket socketName = do
         frameB <- frameProtocol bridge
@@ -34,7 +34,7 @@ byte_driver bridge maxTime maxPacket socketName = do
 frame_driver :: Bridge Frame     -- ^ the ability to send and receive frames/packets downstream
              -> Float            -- ^ The MAX timeout size, in seconds.
              -> Int              -- ^ The MAX packet size.
-             -> String           -- ^ The name of the socket we make for this driver
+             -> SocketName       -- ^ The name of the socket we make for this driver
              -> IO ()            -- ^ never returns.
 frame_driver frameB maxTime maxPacket socketName = do
         let limit = boundLimit maxTime
