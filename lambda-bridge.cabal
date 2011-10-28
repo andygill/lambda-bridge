@@ -25,7 +25,7 @@ Flag example
   Description: build the single example
 
 Library
-  Build-Depends:   base >= 4 && < 5, network >= 2.3, binary, bytestring >= 0.9.2, random, time, data-default, containers, stm, directory
+  Build-Depends:   base >= 4 && < 5, network >= 2.3, binary, bytestring >= 0.9.1.10, random, time, data-default, containers, stm, directory
   Exposed-Modules:     Network.LambdaBridge
                        Network.LambdaBridge.ARQ
                        Network.LambdaBridge.Bridge
@@ -42,17 +42,17 @@ Library
 
 -- Now the drivers.
 Executable lb_loopback
-   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring >= 0.9.2, random, time, data-default, containers, stm, directory
+   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring >= 0.9.1.10, random, time, data-default, containers, stm, directory
    Hs-Source-Dirs: 	.  drivers/loopback
    Main-Is: Main.hs
 
 Executable lb_byte
-   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring >= 0.9.2, random, time, data-default, containers, stm, directory
+   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring >= 0.9.1.10, random, time, data-default, containers, stm, directory
    Hs-Source-Dirs: 	.  drivers/byte
    Main-Is: Main.hs
 
 Executable lb_rs232
-   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring >= 0.9.2, random, time, data-default, containers, stm, directory, serialport
+   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring >= 0.9.1.10, random, time, data-default, containers, stm, directory, serialport
    Hs-Source-Dirs: 	.  drivers/rs232
    Main-Is: Main.hs
    Ghc-Options: -threaded 
@@ -60,13 +60,13 @@ Executable lb_rs232
 
 -- And the tools
 Executable lb_bridge
-   Build-Depends: base >= 4 && < 5, binary, bytestring >= 0.9.2, random, time, data-default, containers, stm, network, directory
+   Build-Depends: base >= 4 && < 5, binary, bytestring >= 0.9.1.10, random, time, data-default, containers, stm, network, directory
    Hs-Source-Dirs: . tools/bridge
    Main-Is: Main.hs
    GHC-Options: -threaded 
 
 Executable lb_bootstrap
-   Build-Depends: base >= 4 && < 5, binary, bytestring >= 0.9.2, random, time, data-default, containers, stm, network, directory
+   Build-Depends: base >= 4 && < 5, binary, bytestring >= 0.9.1.10, random, time, data-default, containers, stm, network, directory
    Hs-Source-Dirs: . tools/bootstrap
    Main-Is: Main.hs
    GHC-Options: -threaded 
