@@ -81,27 +81,26 @@ maxFrameSize = 254
 It uses the following Frame format:
 
 
-> <- sync + size            ->|<- payload ...              ->|
-> +------+------+------+------+----------------+------+------+
-> | 0xf1 |  sz  |   CRC-16    |  ... DATA .... |   CRC-16    |
-> +------+------+------+------+----------------+------+------+
+> <- sync+size -><- payload ...              ->|
+> +------+------+----------------+------+------+
+> | 0xfe |  sz  |  ... DATA .... |   CRC-16    |
+> +------+------+----------------+------+------+
 
 
-The '0xf1' is the sync marker starter; then comes the size (0 ...238),
-then the CRC-16 for the [0xf1,sz]. This CRC-16 will never contain 0xf1
-in either byte (causing the upto 238 restriction). This means that
-when looking for a header, if a 0xf1 is found in the sz or CRC positions,
+The '0xfe' is the sync marker starter; then comes the size (0 ...253)
+then the CRC-16 for the [0xfe,sz]. This means that
+when looking for a header, if a 0xfe is found in the sz position,
 this marks a candidate for a new sync marker, and the one being
 processed in corrupt.
 
 Furthermore, the data is byte-stuffed 
 (<http://en.wikipedia.org/wiki/Bit_stuffing>)
-for 0xf1, so 0xf1 in DATA and the DATA-CRC is represented
-using the pair of bytes 0xf1 0xff (which will never occur in a header).
+for 0xfe, so 0xfe in DATA and the DATA-CRC is represented
+using the pair of bytes 0xfe 0xff (which will never occur in a header).
 In this way, if a byte is lost, the next header can be found
-by scaning for 0xf1 N, where N <= 238.
+by scaning for 0xfe N, where N <= 253.
 
-The argumentsfor 'frameProtocol' is the 'Bridge Byte' we uses to send the byte stream .
+The arguments for 'frameProtocol' is the 'Bridge Byte' we uses to send the byte stream .
 
 -}
 
