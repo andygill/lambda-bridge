@@ -6,20 +6,29 @@ Directory Structure
    * Network/LambdaBridge/... -- generic Haskell "network" code for building lambda bridges.
 
  * drivers -- The lambda-bridge device driver, in user-space. They are implemented
-   as stand alone user processes that are invoked from the [lb_]board_connect function,
-   or *_driver wrapper functions, in C or Haskell. 
-
+   as stand alone user processes that are pre-invoked before calling the connect function,
+  
    By convention, the lambda-bridge driver binaries start with lb_.
 
- * connect -- C implementation of lb_board_connect, the lowest-level C code that connects
-   high level bridges to user-space drivers.
+   * Current drivers; all generate a connectable socket.
+
+   lb_byte	- generic byte-level transfer protocol, connects via (low-level) sockets
+   lb_loopback	- loopback driver, just reflects the data sent straight back 
+   lb_rs232	- the 232 driver, connects via a 232 cabal
+
+   * Future drivers
+
+   lb_udp       - generic packet-level transfer protocol, connects via UDP packets.
+
+   ** External drivers (These are other hackage packages)
+
+   lb_usb	- connect over a USB 2.0 [in lambda-bridge-usb] 
+
+ * tools - Tools used to test and/or build the lambda bridge.
  
- * examples -- Examples of using some generic/toy bridges.
-    haskell-cat -- Example of calling the cat driver.
+   lb_bridge	- (trivial) bridge, generates two low-level sockets and implements
+   		  full duplex with optional failure insertions.
 
- * runners -- programs/applications that *use* the lambda-bridge
-    * udp_lbshell -- Allows the remote invocation of lambda-bridge commands.
-    * stdio_lbshell -- Allows a lambda bridge driver to be used via stdio and the UNIX shell (TOBEDONE)
+   lb_bootstrap	 - test a connection by sending messages to a high-level socket, through a lambda-bridge.
 
-If you use the lava-lambda-bridge package, which contains the Kansas Lava sources for the
-network stack in hardware, then you may want to put it into the subdirectory 'hardware'.
+
