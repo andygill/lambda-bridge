@@ -15,6 +15,18 @@ data Limit = Limit
 	}
 
 -- | 'boundLimit' creates a Limit with a specific upper bound.
+-- It has the following characteristics.
+--
+--  * the limit starts at 1/10th the given maximum
+--
+--  * If a timeout happens, we double the expected response time (upto the given maximum)
+--
+--  * If a response happens, we make the timeout the average between
+--     4 times the response latency, and the previous timeout time.
+--
+-- This seems to work well in practice.
+-- 
+
 boundLimit :: Float -> Limit
 boundLimit n = Limit (n / 10) $ \ t o -> 
 	case o of
