@@ -37,6 +37,8 @@ data Bridge msg = Bridge
 					--   reading does not depend on any external interaction or events.
 	}
 
+--------------------------------------------------------------------------
+
 -- | A 'Bridge (of) Byte' is for talking one byte at a time, where the
 -- byte may or may not get there, and may get garbled.
 --
@@ -47,6 +49,7 @@ newtype Byte = Byte W.Word8 deriving (Eq,Ord)
 instance Show Byte where
    show (Byte w) = "0x" ++ showHex w ""
 
+--------------------------------------------------------------------------
 -- | A 'Bridge (of) Frame' is small set of bytes, where a Frame may
 -- or may not get to the destination, but if received, will 
 -- not be garbled or fragmented (via CRC or equiv).
@@ -67,6 +70,7 @@ fromFrame (Frame fs) = decode (LBS.fromChunks [fs])
 toFrame :: (Binary a) => a -> Frame
 toFrame a = Frame $ BS.concat $ LBS.toChunks $ encode a
 
+--------------------------------------------------------------------------
 
 -- | 'debugBridge' outputs to the stderr debugging messages
 -- about what datum is getting send where.

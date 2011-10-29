@@ -11,10 +11,13 @@ import Data.Char
 
 import Network.LambdaBridge.Bridge
 
--- | 'SocketName' is the name of a UNIX socket,
--- or a number (for a TCP/IP port ID).
+-- | 'SocketName' is the name of a socket.
 --
--- When using make a remote connection, a colon can be used: "drumchapel:1234"
+-- When using to name a remote connection, a colon can be used to denote remoteness: "drumchapel:1234"
+--
+-- When used to name a TCP/IP port ID, a number can be used: "1234"
+--
+-- Otherwise, a named socket is intended.
 
 type SocketName = String
 

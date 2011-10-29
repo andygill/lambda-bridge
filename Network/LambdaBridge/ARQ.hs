@@ -1,13 +1,53 @@
 {-# LANGUAGE RankNTypes #-}
--- | Implementation of ARQ; <http://en.wikipedia.org/wiki/Automatic_repeat_request> ''Stop-and-wait ARQ''.
--- Can be used to put a lightweight reliable link on top of an unreliable packet system, like UDP,
--- or a unreliable bytestream system like RS232.
+{- | Implementation of ARQ; <http://en.wikipedia.org/wiki/Automatic_repeat_request> ''Stop-and-wait ARQ''.
+   Can be used to put a lightweight reliable link on top of an unreliable packet system, like UDP,
+   or a unreliable bytestream system like RS232.
 
+The Frame format is trivial, a byte header, then payload.
+
+> <-byte-><-   n-bytes     ->
+> +------+------------------+
+> | Info |    ... DATA .... |
+> +------+------------------+
+
+  There are two types of packets, data packets and ack packets.
+
+  -  Data packets (in bytes)
+
+> <-byte-><-  2 bytes -><- n-bytes     ->
+> +------+------+------+----------------+
+> | Info |    size     |  ... DATA .... |
+> +------+------+------+----------------+
+
+  -  Ack packets
+
+> <-chan->
+> +------+
+> | Info |
+> +------+
+
+ The Info byte has a simple format.
+
+> <- 5 bits -><-bit-><-2bit ->
+> +----------+------+--------+ 
+> | Channel  | A/B  | Type   |
+> +----------+------+--------+
+
+ Type
+
+> 00 => Data 
+> 01 => *Unused*
+> 10 => Free
+> 11 => Ack
+
+-}
+ 
 module Network.LambdaBridge.ARQ
         ( arqProtocol
         ) where
 
 import Data.Word
+import Data.Bits
 import Data.Binary
 import Data.Binary.Get as Get
 import Data.Binary.Put as Put
