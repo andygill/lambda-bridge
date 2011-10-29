@@ -69,7 +69,7 @@ masterClient port = do
                 (d,m) <- loop 0
                 putStrLn $ showFFloat (Just 2) d "" ++ "s, " 
                         ++ show m ++ " packets of "  ++ show n ++ ", "
-                        ++ showBPS (fromIntegral (m * n * 2) / d) 
+                        ++ showBPS (fromIntegral (m * n * 2 * 8) / d) 
                 if m > 10 && n < 16384 
 		     then loop2 (ceiling (fromIntegral n * (if n < 32 then 2.0 else 1.1)))
 		     else return ()
@@ -78,9 +78,9 @@ masterClient port = do
         putStrLn "Done"
 
 showBPS :: Float -> String
-showBPS n | n > 1000 * 1000 = showFFloat (Just 2) (n / (1000 * 1000)) "MBps"
-          | n > 1000        = showFFloat (Just 2) (n / 1000)          "KBps"
-          | otherwise       = showFFloat (Just 2) n                   "Bps"
+showBPS n | n > 1000 * 1000 = showFFloat (Just 2) (n / (1000 * 1000)) "Mbps"
+          | n > 1000        = showFFloat (Just 2) (n / 1000)          "Kbps"
+          | otherwise       = showFFloat (Just 2) n                   "bps"
 
 -- This just relects the incoming stream, as the outgoing stream.
 slaveClient port = do
