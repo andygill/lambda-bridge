@@ -74,37 +74,42 @@ import Data.Char
 --------------------------------------------------------------------------
 
 data Hdr = Hdr
-        { hdr_tag     :: TagId
+        { hdr_tag     :: PacketId
         , hdr_type    :: TypeId
         }
         deriving (Eq, Ord, Show)
         
-data TagId     = A | B
+data PacketId     = A | B
         deriving (Eq, Ord, Show)
 
-otherTag :: TagId -> TagId
+otherTag :: PacketId -> PacketId
 otherTag A = B
 otherTag B = A
 
 data TypeId 
         = DataId
-        | ReservedId
-        | FreeId 
-        | AckId 
+        | Ack AckId
+        deriving (Eq, Ord, Show)
+        
+data AckId 
+        = AckId
+        | PauseId
+        | UnpauseId
         deriving (Eq, Ord, Show)
         
 instance Binary Hdr where
 	put (Hdr tag ty) = 
                 putWord8 $ (case tag of { A -> 0x0 ; B -> 0x4 })
-                      .|.  (case ty of { DataId -> 0x0; ReservedId -> 0x1 ; FreeId -> 0x2 ; AckId -> 0x3 })
+                      .|.  (case ty of { DataId -> 0x0; Ack AckId -> 0x1 ; Ack PauseId -> 0x2 ; Ack UnpauseId -> 0x3 })
         get = do
                 wd <- getWord8
                 return $ Hdr (if testBit wd 2 then B else A)
                              (case wd .&. 0x3 of
                                   0x0 -> DataId
-                                  0x2 -> FreeId
-                                  0x3 -> AckId
-                                  _   -> ReservedId)
+                                  0x1 -> Ack AckId
+                                  0x2 -> Ack PauseId
+                                  0x3 -> Ack UnpauseId
+                                  _   -> error "impossible (getting Hdr from binary)")
                              
 
 frameDecode :: Frame -> Either DataPacket AckPacket
@@ -113,8 +118,7 @@ frameDecode (Frame bs) = run $ do
         hdr <- lookAhead get
         r <- case hdr_type hdr of
            DataId -> liftM Left get 
-           AckId  -> liftM Right get
-           FreeId -> liftM Right get
+           _      -> liftM Right get
 --        () <- trace (show ("decoded as ",r)) $ return ()
         return r
                   
@@ -128,12 +132,11 @@ frameDataPacket = toFrame
 frameAckPacket :: AckPacket -> Frame
 frameAckPacket = toFrame
 
-
 --------------------------------------------------------------------------
 
 data DataPacket = DataPacket 
-                TagId           -- ^ The tag id
-		BS.ByteString	-- the data (strict bytestring, not lazy)
+                PacketId           -- ^ The tag id
+		BS.ByteString	-- ^ the data (strict bytestring, not lazy)
         deriving (Eq,Ord,Show)
 
 instance Binary DataPacket where
@@ -151,94 +154,17 @@ instance Binary DataPacket where
 
 --------------------------------------------------------------------------
 
-data AckPacket = AckPacket TagId 
-               | FreePacket TagId
+data AckPacket = AckPacket PacketId AckId 
         deriving (Eq,Ord,Show)
 
 instance Binary AckPacket where
-	put (AckPacket tag)  = put (Hdr tag AckId)
-	put (FreePacket tag) = put (Hdr tag FreeId)
+	put (AckPacket ackid tag)  = put (Hdr ackid (Ack tag))
 	get = do hdr <- get
                  case hdr_type hdr of
-                   AckId  -> return $ AckPacket (hdr_tag hdr)
-                   FreeId -> return $ FreePacket (hdr_tag hdr)
-                   _ -> fail "expecting ack or free, found other"
-
-
+                   Ack ackid  -> return $ AckPacket (hdr_tag hdr) ackid
+                   DataId    -> fail "expecting ack style packet, found a data packet"
 
 --------------------------------------------------------------------------
-{-
-type PacketId  = Word16
-
-{- | The 'FrameData' packet. 
- -}
-
-data FrameData = FrameData
-		PacketId	-- the number of the packet
-		BS.ByteString	-- the data (strict bytestring, not lazy)
-	deriving (Show)
-
-instance Binary FrameData where
-	put (FrameData packId bs) = do
-                putWord8 0x80
-		put packId
-		put (fromIntegral (BS.length bs) :: Word16)
-		putByteString bs
-	get = do 0x80 <- getWord8 
-                 packId <- get
-                 sz <- get :: Get.Get Word16
-	         bs <- Get.getByteString (fromIntegral sz)
-                 return $ FrameData packId bs
-
-{- |  The back-channel from data getting sent, on any specific channel,
-   is always just 'Ack' and 'Free'. 'Free' implies 'Ack'.
- 
-'Ack' uses the following Binary format:
-
-> <-byte-><- 2 bytes ->
-> +------+------+------+
-> | 0x00 |  frame_id   |                Ack
-> +------+------+------+
->
-> +------+------+------+
-> | 0xff |  frame_id   |                Free
-> +------+------+------+
-
--}
-
-data Ack = Ack  PacketId	-- ^ packet I just got
-	 | Free PacketId	-- ^ packet I got and forwarded
-	deriving (Show)
-
-instance Binary Ack where
-        put (Ack packId) = do
-                putWord8 0x00
-                put packId
-        put (Free packId) = do
-                putWord8 0xff
-                put packId
-
-        get = do tag <- getWord8
-                 packId <- get
-                 case tag of
-                   0x00 -> return $ Ack packId
-                   0xff -> return $ Free packId
-
-data Packet'
-        = AckPacket' Ack
-        | DataPacket' FrameData
-	
-instance Binary Packet' where
-        -- We rely on these two being distinct
-	put (AckPacket' ack) = put ack
-	put (DataPacket' dat) = put dat
-
-	get = do tag <- lookAhead getWord8
-		 case tag of
-		   0x00 -> liftM AckPacket' get
-		   0x80 -> liftM DataPacket' get
-		   0xff -> liftM AckPacket' get
--}
 
 -- | build a ByteString (packet'ed) API that uses these
 -- the ARQ protocol.
@@ -247,8 +173,8 @@ arqProtocol bridge tm = do
 	toSendVar   <- newEmptyMVar :: IO (MVar ByteString)
 	haveRecvVar <- newEmptyMVar :: IO (MVar ByteString)
 
-	fastTimeout <- timeout tm
-	slowTimeout <- timeout tm
+	sendTimeout <- timeout tm
+	unpauseTimeout <- timeout tm
 
         ackVar     <- newEmptyMVar :: IO (MVar AckPacket)
         dataVar    <- newEmptyMVar :: IO (MVar DataPacket)
@@ -259,33 +185,54 @@ arqProtocol bridge tm = do
                   Right ack  -> putMVar ackVar ack
                   Left  dat  -> putMVar dataVar dat
 
-
 	let getAck   = takeMVar ackVar
 	let getData  = takeMVar dataVar
 
 	let putData   = toBridge bridge . frameDataPacket
 	let putAck   = toBridge bridge . frameAckPacket
 
+        --------------------------------------------------
 	let startSend n = do
 		bs <- takeMVar toSendVar
 		readySend (DataPacket n bs)
 
 	    readySend dat@(DataPacket n bs) = do
 		putData dat
-		res <- fastTimeout $ 
+		sentSend dat
+
+            sentSend dat@(DataPacket n _) = do
+		res <- sendTimeout $ 
 		  let loop = do
 			ack <- getAck
 			case ack of
 			  -- only accept ack's with the correct pid's
-			  AckPacket pid  | pid == n -> return $ ack
-			  FreePacket pid | pid == n -> return $ ack
+			  AckPacket pid ackType | pid == n -> return $ ackType
 			  _ -> loop
 		  in loop
 		case res of
-		  Just (AckPacket _)  -> waitSend n
-		  Just (FreePacket _) -> startSend (otherTag n)
-		  Nothing             -> readySend dat
+		  Just AckId      -> startSend (otherTag n)
+		  Just PauseId    -> waitSend n
+		  Just UnpauseId  -> ackSend n
+		  Nothing         -> readySend dat
 
+            waitSend n = do
+--                print ("waitSend",n)
+		ack <- getAck
+                case ack of
+                  AckPacket pid UnpauseId
+                        | pid == n -> ackSend n
+                  _ -> error $ "waitSend, found " ++ show ack ++ ", packet id = " ++ show n
+
+            ackSend n = do
+                    obs <- tryTakeMVar toSendVar
+                    readySend $ DataPacket (otherTag n)
+                              $ case obs of
+                                 Nothing -> BS.empty
+                                 Just bs -> bs
+
+        --------------------------------------------------
+{-
+            
 	    waitSend n = do
 		res <- slowTimeout $ 
 		  let loop = do
@@ -319,13 +266,51 @@ arqProtocol bridge tm = do
 		  Just (FreePacket _) -> startSend (otherTag n)
 		  Nothing       -> pingSend n
 		
+-}
 
-	let start :: TagId -> IO ()
+        let startRecv :: PacketId -> IO ()
+            startRecv m = do
+		dat@(DataPacket pid _) <- getData
+                if m == pid then recv'dRecv dat
+                            else ackRecv pid
+
+            ackRecv m = do
+                putAck (AckPacket m $ AckId)
+                startRecv (otherTag m)
+
+            recv'dRecv dat@(DataPacket pid bs) = do
+                pushed <- tryPutMVar haveRecvVar bs
+                if pushed then do
+                        ackRecv pid
+                    else do
+--                        print ("Sending pause")
+                        putAck (AckPacket pid $ PauseId)
+                        pausingRecv dat
+
+            pausingRecv (DataPacket pid bs) = do
+                putMVar haveRecvVar bs
+                unpausingRecv pid
+
+            unpausingRecv m = do
+                putAck (AckPacket m $ UnpauseId) 
+                unpausedRecv m
+
+            unpausedRecv m = do
+                optDat <- unpauseTimeout $ getData
+                case optDat of
+                  Nothing -> unpausingRecv m
+                  Just dat@(DataPacket pid _)
+                     | m == pid  -> ackRecv pid
+                     | otherwise -> recv'dRecv dat
+
+            {-
+
+	let start :: PacketId -> IO ()
 	    start n = do
 		dat <- getData
 		recv'd n dat
 
-	    recv'd :: TagId -> DataPacket -> IO ()
+	    recv'd :: PacketId -> DataPacket -> IO ()
 	    recv'd n (DataPacket m bs) = 
                 -- TODO: figure out what to do if n < m
                 -- which is when the protocol has gone badly wrong (REBOOT NEEDED?)
@@ -351,7 +336,7 @@ arqProtocol bridge tm = do
 				blocked n sync
 
 
-	    blocked :: TagId -> MVar () -> IO ()
+	    blocked :: PacketId -> MVar () -> IO ()
 	    blocked n sync = do
 		DataPacket m bs <- getData
 		s <- tryTakeMVar sync
@@ -367,11 +352,12 @@ arqProtocol bridge tm = do
 			blocked n sync
 
 
+-}
         -- This sends data
 	forkIO $ startSend A
 
 	-- This sends acks
-	forkIO $ start A
+	forkIO $ startRecv A
 
 	return $ Bridge
 	        { toBridge = putMVar toSendVar 
