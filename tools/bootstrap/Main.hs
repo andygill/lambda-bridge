@@ -65,12 +65,15 @@ masterClient port = do
                         expect msg2
                         t1 <- getCurrentTime
                         let d = realToFrac (t1 `diffUTCTime` t0) :: Float
-                        if d < 5 then loop (m+1) else return (d,m)
+                        if d < 1 then loop (m+1) else return (d,m)
                 (d,m) <- loop 0
+--                putStrLn $ showFFloat (Just 2) d "," 
+--                        ++ show m ++ "," ++ show n ++ ","
+--                        ++ show (fromIntegral (m * n * 2 * 8) / d)
                 putStrLn $ showFFloat (Just 2) d "" ++ "s, " 
                         ++ show m ++ " packets of "  ++ show n ++ ", "
                         ++ showBPS (fromIntegral (m * n * 2 * 8) / d) 
-                if m > 10 && n < 16384 
+                if m > 10 && n < 16384
 		     then loop2 (ceiling (fromIntegral n * (if n < 32 then 2.0 else 1.1)))
 		     else return ()
         loop2 1
