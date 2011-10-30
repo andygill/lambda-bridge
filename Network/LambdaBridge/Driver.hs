@@ -47,5 +47,6 @@ frame_driver frameB maxTime maxPacket socketName = do
                         toBridge arqB bs
                 forkIO $ forever $ do 
                         bs <- fromBridge arqB
+--                        threadDelay (100 * 1000)      throttle, please
                         BS.hPut destH bs
                 return ()
