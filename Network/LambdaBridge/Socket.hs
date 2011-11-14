@@ -23,8 +23,12 @@ type SocketName = String
 
 -- | 'openAsClient' opens a (remote or local) socket, and returns the UNIX handle for the socket.
 openAsClient :: SocketName -> IO Handle
-openAsClient nm = connectTo "localhost" $ UnixSocket nm
-
+openAsClient sockName = 
+   case span (/= ':') sockName of
+     (hostName,':':portString) | all isDigit portString -> connectTo hostName 
+                                                         $ mkPortNumber portString
+     (hostName,':':_) -> error $ "socketName failure; bad hostname or socket number:" ++ show sockName
+     _                -> connectTo "localhost" $ UnixSocket sockName                
 
 -- | 'openAsServer' creates a socket, listens to the socket, 
 -- and calls a callback when the socket is connected to.
@@ -35,7 +39,7 @@ openAsClient nm = connectTo "localhost" $ UnixSocket nm
 
 openAsServer :: SocketName -> (Handle -> IO ()) -> IO ()
 openAsServer nm callback =
-        finally (do sock <- listenOn $ UnixSocket nm
+        finally (do sock <- listenOn $ findServerPortID nm
                     forever $ do 
                        print "accepting"
                        (hd,_host,_port) <- accept sock
@@ -43,12 +47,21 @@ openAsServer nm callback =
                        callback hd)
                 (removeFile nm)
 
+findServerPortID :: String -> PortID
+findServerPortID nm 
+  | all isDigit nm  = mkPortNumber nm
+  | otherwise       = UnixSocket nm
+
+
+mkPortNumber :: String -> PortID
+mkPortNumber portString = PortNumber (fromIntegral (read portString :: Int))
+
 -- | 'openOnceAsServer' is a version of openAsServer than only opens the socket
 -- for a single connection, after waiting for the connection.
 
 openOnceAsServer :: SocketName -> IO Handle
 openOnceAsServer nm = do
-        finally (do sock <- listenOn $ UnixSocket nm
+        finally (do sock <- listenOn $ findServerPortID nm
                     print "accepting"
                     (hd,_host,_port) <- accept sock
                     print "acceped"
