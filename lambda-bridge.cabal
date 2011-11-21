@@ -57,6 +57,12 @@ Executable lb_rs232
    Main-Is: Main.hs
    Ghc-Options: -threaded 
 
+--Executable lb_udp
+--   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring >= 0.9.1.10, random, time, data-default, containers, stm, directory
+--   Hs-Source-Dirs: 	.  drivers/udp
+--   Main-Is: Main.hs
+--   Ghc-Options: -threaded 
+
 
 -- And the tools
 Executable lb_bridge

@@ -37,6 +37,7 @@ buildBridge lhs rhs = do
         hSetBuffering hd1 NoBuffering
         hSetBuffering hd2 NoBuffering
 
+{-
         forkIO $ forever $ do
                 bs <- B.hGetSome hd1 4096
                 B.hPut hd2 bs
@@ -45,16 +46,16 @@ buildBridge lhs rhs = do
                 bs <- B.hGetSome hd2 4096
                 B.hPut hd1 bs
 
-        
+-}        
 
         bridge1 <- openByteBridge hd1
         bridge2 <- openByteBridge hd2
 
         let real = def { loseU = 0.0
-                       , mangleU = 0.1
+                       , mangleU = 0.01 -- 1% 
                        , mangler = \ r (Byte a) -> Byte (floor (r * 256) + a) 
 			}
 
-        connectBridges bridge1 def def bridge2
+        connectBridges bridge1 real real bridge2
 
         return ()

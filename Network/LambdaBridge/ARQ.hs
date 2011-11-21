@@ -135,8 +135,8 @@ frameAckPacket = toFrame
 --------------------------------------------------------------------------
 
 data DataPacket = DataPacket 
-                PacketId           -- ^ The tag id
-		BS.ByteString	-- ^ the data (strict bytestring, not lazy)
+                PacketId          -- The tag id
+		BS.ByteString	  --  the data (strict bytestring, not lazy)
         deriving (Eq,Ord,Show)
 
 instance Binary DataPacket where
