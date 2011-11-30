@@ -13,9 +13,11 @@ import Network.LambdaBridge.Frame
 import Network.LambdaBridge.Driver
 import Network.LambdaBridge.Timeout
 import Network.LambdaBridge.ARQ
+import Network.LambdaBridge.Logging
 
 main :: IO ()
 main = do
+        init_logging
         args <- getArgs
         case args of
           [src,dest] -> lb_byte src dest

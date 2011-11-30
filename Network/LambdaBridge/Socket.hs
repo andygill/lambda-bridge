@@ -10,6 +10,9 @@ import Control.Monad
 import Data.Char
 
 import Network.LambdaBridge.Bridge
+import Network.LambdaBridge.Logging
+
+debug = debugM "lambda-bridge.socket"
 
 -- | 'SocketName' is the name of a socket.
 --
@@ -39,13 +42,17 @@ openAsClient sockName =
 
 openAsServer :: SocketName -> (Handle -> IO ()) -> IO ()
 openAsServer nm callback =
-        finally (do sock <- listenOn $ findServerPortID nm
+        finally (do sock <- listenOn portId
                     forever $ do 
-                       print "accepting"
-                       (hd,_host,_port) <- accept sock
-                       print "acceped"
+                       debug $ "accepting socket " ++ show sock
+                       acc@(hd,_host,_port) <- accept sock
+                       debug $ "accepted " ++ show acc
                        callback hd)
-                (removeFile nm)
+                (case portId of
+                   UnixSocket name -> removeFile nm
+                   _ -> return ())
+  where
+          portId = findServerPortID nm
 
 findServerPortID :: String -> PortID
 findServerPortID nm 
@@ -62,11 +69,15 @@ mkPortNumber portString = PortNumber (fromIntegral (read portString :: Int))
 openOnceAsServer :: SocketName -> IO Handle
 openOnceAsServer nm = do
         finally (do sock <- listenOn $ findServerPortID nm
-                    print "accepting"
-                    (hd,_host,_port) <- accept sock
-                    print "acceped"
+                    debug $ "accepting socket " ++ show sock
+                    acc@(hd,_host,_port) <- accept sock
+                    debug $ "accepted " ++ show acc
                     return hd)
-                (removeFile nm)
+                (case portId of
+                   UnixSocket name -> removeFile nm
+                   _ -> return ())
+  where
+          portId = findServerPortID nm
 
 -- | Turn a (Socket) 'Handle' into a Bridge (of) Byte
 openByteBridge :: Handle -> IO (Bridge Byte)

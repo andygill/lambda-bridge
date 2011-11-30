@@ -16,7 +16,10 @@ import System.Timeout
 import Numeric
 import Data.Char
 import Data.Default
+import Data.Digest.CRC16
+import Numeric
 
+import Network.LambdaBridge.Logging (debugM)
 import Network.LambdaBridge.Bridge
 
 import System.Random
@@ -42,31 +45,15 @@ We can test things with:
 
   http://www.lammertbies.nl/comm/info/crc-calculation.html
   
-But we insert the bits in the order used for 232 transmission (so the results are different)
-
 -}
 
 -- | Compute the crc for a sequence of bytes.
 -- The arguments for 'crc' are the crc code, and the initial value, often -1.
 --
 --For example, CRC-16-CCITT, which is used for 'Frame', is crc 0x1021 0xffff.
--- (or use 0x84cf as the start)
 
-crc :: (Bits w) => w -> w -> [Word8] -> w
-crc code start bs = id
-                 $ foldl (\ crc b -> 
-			     let b' = if b then 1 else 0
-				 crc' = (crc `shiftR` 1) `xor` (b' `shiftL` (width - 1))  
-			     in if crc `testBit` 0
-				then crc' `xor` code
-			        else crc'
-		 ) start
-		 $ concat [  [ b `testBit` i
-			    | i <- [0..7]
-			    ] 
-			  | b <- bs
-			  ]
-  where width = bitSize code
+crc :: [Word8] -> Word16
+crc = foldl (crc16Update 0x1021 False) 0xffff
 
 -- | The maximum frame payload size, not including CRCs or headers, pre-stuffed.
 maxFrameSize :: Int
@@ -106,26 +93,32 @@ The arguments for 'frameProtocol' is the 'Bridge Byte' we uses to send the byte 
 
 frameProtocol :: Bridge Byte -> IO (Bridge Frame)
 frameProtocol byte_bridge = do
+        let debug = debugM "lambda-bridge.frame"
+
 	let tag = 0xfe :: Word8
 	    tag_stuffing = 0xff :: Word8
 
 	-----------------------------------------------------------------------------
 	sending <- newEmptyMVar
 
-	let write wd = toBridge byte_bridge (Byte wd)
+	let write wd = do
+                debug $ "write " ++ show wd
+	        toBridge byte_bridge (Byte wd)
 
 	let writeWithCRC xs = do
-		let crc_val = crc (0x8408 :: Word16) 0xffff (xs ++ [0,0])
+		let crc_val = crc xs
+                debug $ "crc = " ++ showHex crc_val ""
 		sequence_ [ do write x
 			       if x == tag then write tag_stuffing else return ()
-			  | x <- xs ++ [ fromIntegral $ crc_val `mod` 256
-				       , fromIntegral $ crc_val `div` 256
+			  | x <- xs ++ [ fromIntegral $ crc_val `div` 256
+				       , fromIntegral $ crc_val `mod` 256
 				       ]
 			 ]
 
 
 	let sender = do
 		bs <- takeMVar sending
+                debug $ "sending " ++ show bs
                 write tag
                 write (fromIntegral $ BS.length bs)
 		writeWithCRC (BS.unpack bs)
@@ -138,9 +131,10 @@ frameProtocol byte_bridge = do
 	recving <- newEmptyMVar
 
 	let read = do Byte wd <- fromBridge byte_bridge
+                      debug $ "read " ++ show wd
 		      return wd
 
-	let checkCRC xs = crc (0x8408 :: Word16) 0xffff xs == 0 
+	let checkCRC xs = crc xs == 0 
 
 	let findHeader :: IO ()
 	    findHeader = do
@@ -152,8 +146,10 @@ frameProtocol byte_bridge = do
 	    findHeader' :: Word8 -> Word8 -> IO ()
 	    findHeader' wd0 wd1 
 		| wd0 == tag && fromIntegral wd1 <= maxFrameSize 
-		  = findPayload (fromIntegral wd1)
+		  = do debug $ "found header, len = " ++ show wd1
+		       findPayload (fromIntegral wd1)
 		| otherwise = do
+                        debug $ "rejected header " ++ show [wd0,wd1]
 			wd2 <- read
 	    		findHeader' wd1 wd2 
 
@@ -178,9 +174,14 @@ frameProtocol byte_bridge = do
 		xs <- sequence  [ readWithPadding
 		 		| i <- [1..(sz + 2)]
 				]
-		if checkCRC xs then putMVar recving (Frame (BS.pack (take sz xs)))
-			       else do -- print "frame CRC failure"
-			               return ()
+		if checkCRC xs then do
+                        let frame = Frame (BS.pack (take sz xs))
+                        debug $ "received packet " ++ show frame
+                        putMVar recving frame
+                        debug $ "forwarded packet"
+		     else do 
+                        debug $ "crc failure 0x" ++ showHex (crc xs) ""
+			return ()
 --		print xs
 		return ()
 
