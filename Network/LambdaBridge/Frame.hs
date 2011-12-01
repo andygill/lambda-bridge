@@ -57,7 +57,7 @@ crc = foldl (crc16Update 0x1021 False) 0xffff
 
 -- | The maximum frame payload size, not including CRCs or headers, pre-stuffed.
 maxFrameSize :: Int
-maxFrameSize = 254
+maxFrameSize = 239
 
 -----------------------------------------------------------------------
 -- | 'frameProtocol' provides a Bridge Frame Frame from the services of a 'Bridge Byte'.
@@ -95,21 +95,21 @@ frameProtocol :: Bridge Byte -> IO (Bridge Frame)
 frameProtocol byte_bridge = do
         let debug = debugM "lambda-bridge.frame"
 
-	let tag = 0xfe :: Word8
+	let tag          = 0xf0 :: Word8
 	    tag_stuffing = 0xff :: Word8
 
 	-----------------------------------------------------------------------------
 	sending <- newEmptyMVar
 
 	let write wd = do
-                debug $ "write " ++ show wd
+                debug $ "write 0x" ++ showHex wd ""
 	        toBridge byte_bridge (Byte wd)
 
-	let writeWithCRC xs = do
+	let writeWithCRC stuffing xs = do
 		let crc_val = crc xs
                 debug $ "crc = " ++ showHex crc_val ""
 		sequence_ [ do write x
-			       if x == tag then write tag_stuffing else return ()
+			       if stuffing && x == tag then write tag_stuffing else return ()
 			  | x <- xs ++ [ fromIntegral $ crc_val `div` 256
 				       , fromIntegral $ crc_val `mod` 256
 				       ]
@@ -119,9 +119,12 @@ frameProtocol byte_bridge = do
 	let sender = do
 		bs <- takeMVar sending
                 debug $ "sending " ++ show bs
-                write tag
-                write (fromIntegral $ BS.length bs)
-		writeWithCRC (BS.unpack bs)
+                write 0x0       -- to reset the RS232 stop bit alignment
+                writeWithCRC False
+                        , tag
+                        , fromIntegral $ BS.length bs
+                        ]
+		writeWithCRC True (BS.unpack bs)
 		sender
 		
 	forkIO $ sender
@@ -131,27 +134,34 @@ frameProtocol byte_bridge = do
 	recving <- newEmptyMVar
 
 	let read = do Byte wd <- fromBridge byte_bridge
-                      debug $ "read " ++ show wd
+                      debug $ "read 0x" ++ showHex wd ""
 		      return wd
 
 	let checkCRC xs = crc xs == 0 
 
-	let findHeader :: IO ()
-	    findHeader = do
+	let findHeader0 :: IO ()
+	    findHeader0 = do
 		wd0 <- read	-- the first byte of a packet can wait as long as you like
+                if wd0 == tag then findHeader1
+                              else findHeader0
+
+            -- found the tag byte; find the length
+            findHeader1 :: IO ()
+	    findHeader1 = do
 		wd1 <- read
-		findHeader' wd0 wd1 
-		
-	    -- you already have the first byte
-	    findHeader' :: Word8 -> Word8 -> IO ()
-	    findHeader' wd0 wd1 
-		| wd0 == tag && fromIntegral wd1 <= maxFrameSize 
+		findHeader2 wd1
+
+	    -- you already have the two bytes,
+	    -- and the first one was the tag
+	    findHeader2 :: Word8 -> IO ()
+	    findHeader2 wd1
+		| fromIntegral wd1 <= maxFrameSize 
 		  = do debug $ "found header, len = " ++ show wd1
-		       findPayload (fromIntegral wd1)
+		       findHeaderCRC0 wd1
 		| otherwise = do
-                        debug $ "rejected header " ++ show [wd0,wd1]
-			wd2 <- read
-	    		findHeader' wd1 wd2 
+                        debug $ "rejected header " ++ show [wd1]
+			if wd1 == tag then findHeader1
+                                      else findHeader0
 
 	    readWithPadding :: IO Word8
 	    readWithPadding = do
@@ -162,10 +172,29 @@ frameProtocol byte_bridge = do
 			   if wd2 == tag_stuffing then return wd1 else do
                                 -- aborting this packet, start new packet
 --                                print ("aborting packet (bad stuffing)")
-				findHeader' wd1 wd2
-				fail "trampoline (clear stack, which contains the old, aborted half-packet)"
+                                debug $ "found non-stuffed tag inside packet"
+				findHeader2 wd2
+				fail "trampoline"
 		    else do
 			return wd1
+
+            findHeaderCRC0 :: Word8 -> IO ()
+            findHeaderCRC0 len = do
+                   crc1 <- read
+		   if crc1 == tag then findHeader1
+                                  else findHeaderCRC1 len crc1
+
+            findHeaderCRC1 :: Word8 -> Word8 -> IO ()
+            findHeaderCRC1 len crc1 = do
+                   crc2 <- read
+                   case () of
+                    _ | crc1 == tag -> findHeader1
+                      | checkCRC [tag,len,crc1,crc2] -> do
+                           debug $ "accepted header"
+                           findPayload (fromIntegral len)
+                      | otherwise -> do
+                           debug $ "header crc failed"
+                           findHeader0  
 
 	    findPayload :: Int -> IO ()
 	    findPayload sz = do
@@ -186,7 +215,7 @@ frameProtocol byte_bridge = do
 		return ()
 
 	let readBridge = do
-		findHeader `catch` \ msg -> do
+		findHeader0 `catch` \ msg -> do
 --					print msg
 					return ()
 		readBridge
@@ -201,6 +230,22 @@ frameProtocol byte_bridge = do
 			else putMVar sending bs
 		, fromBridge = takeMVar recving
 		}
+
+
+-- Used to find the tag number (0xf0)
+find = [ (tag,misses)
+       | tag <- [1..255]
+       , let misses = length
+                [ ()
+                | len <- [0..(tag - 1)]
+                , let x  = crc [tag,len]
+                , let hi = fromIntegral $ x `div` 256
+                , let low = fromIntegral $ x `mod` 256
+                , hi /= tag && low /= tag
+                ]
+       , misses == fromIntegral tag
+       ]
+
 
 
 
