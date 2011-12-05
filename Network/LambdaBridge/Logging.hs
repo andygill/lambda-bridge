@@ -19,6 +19,7 @@ import System.Posix.Process (getProcessID)
 -- use this instead of the debugM.
 debugM :: String -> String -> IO ()
 debugM logger msg = L.debugM logger msg
+-- debugM logger msg = return () 
 
 init_logging :: IO ()
 init_logging = do

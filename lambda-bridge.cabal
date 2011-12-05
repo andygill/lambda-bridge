@@ -35,6 +35,9 @@ Library
                        Network.LambdaBridge.Socket
                        Network.LambdaBridge.Timeout
 
+  Other-modules:
+                       Network.LambdaBridge.Logging
+
   Hs-Source-Dirs:      .
   Extensions:          ForeignFunctionInterface
   C-Sources:           connect/lb_board_connect.c
