@@ -121,7 +121,7 @@ frameProtocol byte_bridge = do
                 debug $ "sending " ++ show bs
                 write 0x0       -- to reset the RS232 stop bit alignment
                 writeWithCRC False
-                        , tag
+                        [ tag
                         , fromIntegral $ BS.length bs
                         ]
 		writeWithCRC True (BS.unpack bs)
