@@ -27,6 +27,11 @@ test2::
 	sleep 1
 	$(BOOTSTRAP) AA
 
+test_vhw::
+	$(BYTE) ../kansas-lava-cores/dev/DCE AA &
+	sleep 1
+	$(BOOTSTRAP) AA
+
 rs232loop::
 	$(RS232) /dev/ttyS0 TTYS0 &
 	$(RS232) /dev/ttyS1 TTYS1 &
