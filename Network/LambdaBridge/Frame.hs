@@ -50,10 +50,13 @@ We can test things with:
 -- | Compute the crc for a sequence of bytes.
 -- The arguments for 'crc' are the crc code, and the initial value, often -1.
 --
---For example, CRC-16-CCITT, which is used for 'Frame', is crc 0x1021 0xffff.
+-- For example, CRC-16-CCITT, which is used for 'Frame', is crc 0x1021 0xffff.
+
+-- Here we *explictly* use LSB first, which involved requesting that crc16Update
+-- reverse the order of bits.
 
 crc :: [Word8] -> Word16
-crc = foldl (crc16Update 0x1021 False) 0xffff
+crc = foldl (crc16Update 0x1021 True) 0xffff
 
 -- | The maximum frame payload size, not including CRCs or headers, pre-stuffed.
 maxFrameSize :: Int
@@ -105,26 +108,28 @@ frameProtocol byte_bridge = do
                 debug $ "write 0x" ++ showHex wd ""
 	        toBridge byte_bridge (Byte wd)
 
-	let writeWithCRC stuffing xs = do
+
+	let writeWithCRC xs = do
 		let crc_val = crc xs
                 debug $ "crc = " ++ showHex crc_val ""
 		sequence_ [ do write x
-			       if stuffing && x == tag then write tag_stuffing else return ()
-			  | x <- xs ++ [ fromIntegral $ crc_val `div` 256
-				       , fromIntegral $ crc_val `mod` 256
+			  | x <- xs ++ [ reverseBits $ fromIntegral $ crc_val `div` 256
+				       , reverseBits $ fromIntegral $ crc_val `mod` 256
 				       ]
 			 ]
 
+        let stuff x | x == tag  = [ tag, tag_stuffing ]
+                    | otherwise = [ x ]
 
 	let sender = do
 		bs <- takeMVar sending
                 debug $ "sending " ++ show bs
                 write 0x0       -- to reset the RS232 stop bit alignment
-                writeWithCRC False
+                writeWithCRC 
                         [ tag
                         , fromIntegral $ BS.length bs
                         ]
-		writeWithCRC True (BS.unpack bs)
+		writeWithCRC (concatMap stuff (BS.unpack bs))
 		sender
 		
 	forkIO $ sender
@@ -193,7 +198,7 @@ frameProtocol byte_bridge = do
                            debug $ "accepted header"
                            findPayload (fromIntegral len)
                       | otherwise -> do
-                           debug $ "header crc failed"
+                           debug $ "header crc failed (expecting " ++ show (crc [tag,len]) ++ ")"
                            findHeader0  
 
 	    findPayload :: Int -> IO ()
@@ -203,13 +208,13 @@ frameProtocol byte_bridge = do
 		xs <- sequence  [ readWithPadding
 		 		| i <- [1..(sz + 2)]
 				]
-		if checkCRC xs then do
+		if checkCRC (concatMap stuff xs) then do
                         let frame = Frame (BS.pack (take sz xs))
                         debug $ "received packet " ++ show frame
                         putMVar recving frame
                         debug $ "forwarded packet"
 		     else do 
-                        debug $ "crc failure 0x" ++ showHex (crc xs) ""
+                        debug $ "crc failure 0x" ++ showHex (crc $ concatMap stuff xs) ""
 			return ()
 --		print xs
 		return ()
@@ -247,5 +252,10 @@ find = [ (tag,misses)
        ]
 
 
+reverseBits :: Word8 -> Word8
+reverseBits x = sum [ 2^(7-i)
+                    | i <- [0..7]
+                    , x `testBit` i
+                    ]
 
 
