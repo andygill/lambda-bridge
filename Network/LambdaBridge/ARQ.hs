@@ -29,19 +29,19 @@ The Frame format is trivial, a byte header, then payload.
  The Info byte has a simple format.
 
 > <- 5 bits -><-bit-><-2bit ->
-> +----------+------+--------+ 
+> +----------+------+--------+
 > | Channel  | A/B  | Type   |
 > +----------+------+--------+
 
  Type
 
-> 00 => Data 
+> 00 => Data
 > 01 => *Unused*
 > 10 => Free
 > 11 => Ack
 
 -}
- 
+
 module Network.LambdaBridge.ARQ
         ( arqProtocol
         ) where
@@ -78,7 +78,7 @@ data Hdr = Hdr
         , hdr_type    :: TypeId
         }
         deriving (Eq, Ord, Show)
-        
+
 data PacketId     = A | B
         deriving (Eq, Ord, Show)
 
@@ -86,19 +86,19 @@ otherTag :: PacketId -> PacketId
 otherTag A = B
 otherTag B = A
 
-data TypeId 
+data TypeId
         = DataId
         | Ack AckId
         deriving (Eq, Ord, Show)
-        
-data AckId 
+
+data AckId
         = AckId
         | PauseId
         | UnpauseId
         deriving (Eq, Ord, Show)
-        
+
 instance Binary Hdr where
-	put (Hdr tag ty) = 
+	put (Hdr tag ty) =
                 putWord8 $ (case tag of { A -> 0x0 ; B -> 0x4 })
                       .|.  (case ty of { DataId -> 0x0; Ack AckId -> 0x1 ; Ack PauseId -> 0x2 ; Ack UnpauseId -> 0x3 })
         get = do
@@ -110,21 +110,21 @@ instance Binary Hdr where
                                   0x2 -> Ack PauseId
                                   0x3 -> Ack UnpauseId
                                   _   -> error "impossible (getting Hdr from binary)")
-                             
+
 
 frameDecode :: Frame -> Either DataPacket AckPacket
 frameDecode (Frame bs) = run $ do
 --        () <- trace (show ("decode",bs)) $ return ()
         hdr <- lookAhead get
         r <- case hdr_type hdr of
-           DataId -> liftM Left get 
+           DataId -> liftM Left get
            _      -> liftM Right get
 --        () <- trace (show ("decoded as ",r)) $ return ()
         return r
-                  
+
   where lbs = LBS.fromChunks [bs]
         run m = runGet m lbs
-                
+
 
 frameDataPacket :: DataPacket -> Frame
 frameDataPacket = toFrame
@@ -134,7 +134,7 @@ frameAckPacket = toFrame
 
 --------------------------------------------------------------------------
 
-data DataPacket = DataPacket 
+data DataPacket = DataPacket
                 PacketId          -- The tag id
 		BS.ByteString	  --  the data (strict bytestring, not lazy)
         deriving (Eq,Ord,Show)
@@ -154,7 +154,7 @@ instance Binary DataPacket where
 
 --------------------------------------------------------------------------
 
-data AckPacket = AckPacket PacketId AckId 
+data AckPacket = AckPacket PacketId AckId
         deriving (Eq,Ord,Show)
 
 instance Binary AckPacket where
@@ -201,7 +201,7 @@ arqProtocol bridge tm = do
 		sentSend dat
 
             sentSend dat@(DataPacket n _) = do
-		res <- sendTimeout $ 
+		res <- sendTimeout $
 		  let loop = do
 			ack <- getAck
 			case ack of
@@ -232,9 +232,9 @@ arqProtocol bridge tm = do
 
         --------------------------------------------------
 {-
-            
+
 	    waitSend n = do
-		res <- slowTimeout $ 
+		res <- slowTimeout $
 		  let loop = do
 			ack <- getAck
 			case ack of
@@ -244,13 +244,13 @@ arqProtocol bridge tm = do
 		  in loop
 		case res of
 		  Just (FreePacket _) -> startSend (otherTag n)
-				-- Assume that we just missed the free,and 
+				-- Assume that we just missed the free,and
 				-- revert to trying the next packet, with timeout.
 		  Nothing       -> pingSend (otherTag n)
-		
+
 	    pingSend n = do
 		putData (DataPacket n BS.empty)
-		res <- slowTimeout $ 
+		res <- slowTimeout $
 		  let loop = do
 			ack <- getAck
 			case ack of
@@ -265,7 +265,7 @@ arqProtocol bridge tm = do
 			-- Finally! got space
 		  Just (FreePacket _) -> startSend (otherTag n)
 		  Nothing       -> pingSend n
-		
+
 -}
 
         let startRecv :: PacketId -> IO ()
@@ -292,7 +292,7 @@ arqProtocol bridge tm = do
                 unpausingRecv pid
 
             unpausingRecv m = do
-                putAck (AckPacket m $ UnpauseId) 
+                putAck (AckPacket m $ UnpauseId)
                 unpausedRecv m
 
             unpausedRecv m = do
@@ -311,7 +311,7 @@ arqProtocol bridge tm = do
 		recv'd n dat
 
 	    recv'd :: PacketId -> DataPacket -> IO ()
-	    recv'd n (DataPacket m bs) = 
+	    recv'd n (DataPacket m bs) =
                 -- TODO: figure out what to do if n < m
                 -- which is when the protocol has gone badly wrong (REBOOT NEEDED?)
                 -- Also, make sure the loop round works
@@ -360,6 +360,6 @@ arqProtocol bridge tm = do
 	forkIO $ startRecv A
 
 	return $ Bridge
-	        { toBridge = putMVar toSendVar 
+	        { toBridge = putMVar toSendVar
                 , fromBridge = takeMVar haveRecvVar
 	        }

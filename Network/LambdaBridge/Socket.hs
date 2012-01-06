@@ -31,24 +31,24 @@ type SocketName = String
 
 -- | 'openAsClient' opens a (remote or local) socket, and returns the UNIX handle for the socket.
 openAsClient :: SocketName -> IO Handle
-openAsClient sockName = 
+openAsClient sockName =
    case span (/= ':') sockName of
-     (hostName,':':portString) | all isDigit portString -> connectTo hostName 
+     (hostName,':':portString) | all isDigit portString -> connectTo hostName
                                                          $ mkPortNumber portString
      (hostName,':':_) -> error $ "socketName failure; bad hostname or socket number:" ++ show sockName
-     _                -> connectTo "localhost" $ UnixSocket sockName                
+     _                -> connectTo "localhost" $ UnixSocket sockName
 
--- | 'openAsServer' creates a socket, listens to the socket, 
+-- | 'openAsServer' creates a socket, listens to the socket,
 -- and calls a callback when the socket is connected to.
 -- The callback may be invoked multiple times.
 -- 'openAsServer' does not start listening for new connections until the callback from
--- a specific connection has returned. 
+-- a specific connection has returned.
 -- The call to openAsServer never terminates.
 
 openAsServer :: SocketName -> (Handle -> IO ()) -> IO ()
 openAsServer nm callback =
         finally (do sock <- listenOn portId
-                    forever $ do 
+                    forever $ do
                        debug $ "accepting socket " ++ show sock
                        acc@(hd,_host,_port) <- accept sock
                        debug $ "accepted " ++ show acc
@@ -60,7 +60,7 @@ openAsServer nm callback =
           portId = findServerPortID nm
 
 findServerPortID :: String -> PortID
-findServerPortID nm 
+findServerPortID nm
   | all isDigit nm  = mkPortNumber nm
   | otherwise       = UnixSocket nm
 
@@ -97,7 +97,7 @@ openModelOnceAsServer port fn = do
     server2 h = do
         debug "opened Model"
         hSetBuffering h NoBuffering
-        bs <- handleToByteString h       
+        bs <- handleToByteString h
         let loop bs ix = do
                 let (a, bs', ix') = runGetState get bs ix
                 debug "calling model"
@@ -122,7 +122,7 @@ openModelOnceAsServer port fn = do
         	        bs <- BS.hGetNonBlocking h 64 -- 64 is picked almost a random
                         print bs
                         return bs
-                     else 
+                     else
         	     	g
 
 
