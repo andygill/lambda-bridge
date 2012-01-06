@@ -114,13 +114,11 @@ openModelOnceAsServer port fn = do
              f = do
                 b1 <- g
                 b2 <- unsafeInterleaveIO $ f
-                print "A"
                 return $ BS.append b1 b2
              g = do
                 b <- hWaitForInput h (-1)             -- wait forever for *any* input
         	if b then do
         	        bs <- BS.hGetNonBlocking h 64 -- 64 is picked almost a random
-                        print bs
                         return bs
                      else
         	     	g
