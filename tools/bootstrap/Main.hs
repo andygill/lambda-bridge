@@ -56,10 +56,23 @@ masterClient port = do
                 ++ show (realToFrac (t2 `diffUTCTime` t0) :: Float) ++ "s round trip"
 
 
-        putStrLn $ "Test 2: different sized packets"
+        let msg2 = BS.pack [0,1,0xf0,0xff,0xf0,0xf0,0xf0,99,100]
+        putStrLn $ "Test 2: check the padding works"
+        t0 <- getCurrentTime
+        send msg2
+        t1 <- getCurrentTime
+        expect msg2
+        t2 <- getCurrentTime
+        putStrLn $ "Test 2: Passed: " 
+                ++ show (realToFrac (t1 `diffUTCTime` t0) :: Float) ++ "s to send, "
+                ++ show (realToFrac (t2 `diffUTCTime` t1) :: Float) ++ "s to receive, "
+                ++ show (realToFrac (t2 `diffUTCTime` t0) :: Float) ++ "s round trip"
+
+        putStrLn $ "Test 3: different sized packets"
         let loop2 n = do
                 t0 <- getCurrentTime
-                let msg2 = BS.pack [fromIntegral (c :: Integer) | c <- [1..n]]
+                stdGen <- newStdGen
+                let msg2 = BS.pack (map fromIntegral (take n (randoms stdGen :: [Int])))
                 let loop m = do
                         send msg2
                         expect msg2
