@@ -7,12 +7,13 @@ module Network.LambdaBridge.Frame
 	, crc
 	) where
 
+import Control.Exception as E
 import Data.Word
 import Data.Bits
 import Control.Concurrent
 import Control.Concurrent.MVar
 import qualified Data.ByteString as BS
-import System.Timeout 
+import System.Timeout
 import Numeric
 import Data.Char
 import Data.Default
@@ -44,7 +45,9 @@ write the most significant bit of each byte first.
 We can test things with:
 
   http://www.lammertbies.nl/comm/info/crc-calculation.html
-  
+
+   CRC-CCITT (0xFFFF)
+
 -}
 
 -- | Compute the crc for a sequence of bytes.
@@ -83,7 +86,7 @@ when looking for a header, if a 0xfe is found in the sz position,
 this marks a candidate for a new sync marker, and the one being
 processed in corrupt.
 
-Furthermore, the data is byte-stuffed 
+Furthermore, the data is byte-stuffed
 (<http://en.wikipedia.org/wiki/Bit_stuffing>)
 for 0xfe, so 0xfe in DATA and the DATA-CRC is represented
 using the pair of bytes 0xfe 0xff (which will never occur in a header).
@@ -94,8 +97,8 @@ The arguments for 'frameProtocol' is the 'Bridge Byte' we uses to send the byte 
 
 -}
 
-frameProtocol :: Bridge Byte -> IO (Bridge Frame)
-frameProtocol byte_bridge = do
+frameProtocol :: Bridge Bytes -> IO (Bridge Frame)
+frameProtocol bytes_bridge = do
         let debug = debugM "lambda-bridge.frame"
 
 	let tag          = 0xf0 :: Word8
@@ -106,7 +109,7 @@ frameProtocol byte_bridge = do
 
 	let write wd = do
                 debug $ "write 0x" ++ showHex wd ""
-	        toBridge byte_bridge (Byte wd)
+	        toBridge bytes_bridge (Bytes $ BS.pack [wd])
 
 
 	let writeWithCRC xs = do
@@ -125,24 +128,33 @@ frameProtocol byte_bridge = do
 		bs <- takeMVar sending
                 debug $ "sending " ++ show bs
                 write 0x0       -- to reset the RS232 stop bit alignment
-                writeWithCRC 
+                writeWithCRC
                         [ tag
                         , fromIntegral $ BS.length bs
                         ]
 		writeWithCRC (concatMap stuff (BS.unpack bs))
 		sender
-		
+
 	forkIO $ sender
 
 	-----------------------------------------------------------------------------
 
 	recving <- newEmptyMVar
 
-	let read = do Byte wd <- fromBridge byte_bridge
-                      debug $ "read 0x" ++ showHex wd ""
-		      return wd
+        ch <- newChan
 
-	let checkCRC xs = crc xs == 0 
+        forkIO $ let loop [] = do
+                        Bytes wds <- fromBridge bytes_bridge
+                        loop (BS.unpack wds)
+                     loop (c:cs) = do
+                        debug $ "read 0x" ++ showHex c ""
+                        writeChan ch c
+                 in loop []
+
+
+	let read = readChan ch
+
+	let checkCRC xs = crc xs == 0
 
 	let findHeader0 :: IO ()
 	    findHeader0 = do
@@ -160,7 +172,7 @@ frameProtocol byte_bridge = do
 	    -- and the first one was the tag
 	    findHeader2 :: Word8 -> IO ()
 	    findHeader2 wd1
-		| fromIntegral wd1 <= maxFrameSize 
+		| fromIntegral wd1 <= maxFrameSize
 		  = do debug $ "found header, len = " ++ show wd1
 		       findHeaderCRC0 wd1
 		| otherwise = do
@@ -172,7 +184,7 @@ frameProtocol byte_bridge = do
 	    readWithPadding = do
 		wd1 <- read
 
-		if wd1 == tag then 
+		if wd1 == tag then
 			do wd2 <- read
 			   if wd2 == tag_stuffing then return wd1 else do
                                 -- aborting this packet, start new packet
@@ -199,7 +211,7 @@ frameProtocol byte_bridge = do
                            findPayload (fromIntegral len)
                       | otherwise -> do
                            debug $ "header crc failed (expecting " ++ show (crc [tag,len]) ++ ")"
-                           findHeader0  
+                           findHeader0
 
 	    findPayload :: Int -> IO ()
 	    findPayload sz = do
@@ -213,14 +225,14 @@ frameProtocol byte_bridge = do
                         debug $ "received packet " ++ show frame
                         putMVar recving frame
                         debug $ "forwarded packet"
-		     else do 
+		     else do
                         debug $ "crc failure 0x" ++ showHex (crc $ concatMap stuff xs) ""
 			return ()
 --		print xs
 		return ()
 
 	let readBridge = do
-		findHeader0 `catch` \ msg -> do
+		findHeader0 `E.catch` \ SomeException {} -> do
 --					print msg
 					return ()
 		readBridge
@@ -228,7 +240,7 @@ frameProtocol byte_bridge = do
 
 	forkIO $ readBridge
 
-	return $ Bridge 
+	return $ Bridge
 		{ toBridge = \ (Frame bs) ->
 			if BS.length bs > maxFrameSize
 			then fail ("packet exceeded max frame size of " ++ show maxFrameSize)
@@ -244,8 +256,8 @@ find = [ (tag,misses)
                 [ ()
                 | len <- [0..(tag - 1)]
                 , let x  = crc [tag,len]
-                , let hi = fromIntegral $ x `div` 256
-                , let low = fromIntegral $ x `mod` 256
+                , let hi = reverseBits $ fromIntegral $ x `div` 256
+                , let low = reverseBits $ fromIntegral $ x `mod` 256
                 , hi /= tag && low /= tag
                 ]
        , misses == fromIntegral tag
@@ -259,3 +271,71 @@ reverseBits x = sum [ 2^(7-i)
                     ]
 
 
+-- x^16 + x^12 + x^5 + 1
+crcMe :: [Word8] -> Word16
+crcMe cs = loop 0xffff cs
+  where
+        loop r (c:cs) = loop (loop2 (r `xor` fromIntegral c) c 0) cs
+        loop r [] = r
+
+        loop2 r c 8 = r
+        loop2 r c i = if r `testBit` i
+                    then loop2 ((r `shiftR` 1) `xor` 0x8408) c (i+1)
+                    else loop2 (r `shiftR` 1)                c (i+1)
+
+-- 0x1021
+-- 0x8408
+
+
+{-
+
+ function crc(byte array string[1..len], int len) {
+     rem := 0
+     // A popular variant complements rem here
+     for i from 1 to len {
+         rem := rem xor string[i]
+         for j from 1 to 8 {   // Assuming 8 bits per byte
+             if rem and 0x0001 {   // if rightmost (least significant) bit is set
+                 rem := (rem rightShift 1) xor 0x8408
+             } else {
+                 rem := rem rightShift 1
+             }
+         }
+     }
+     // A popular variant complements rem here
+     return rem
+-}
+
+
+data BOOL = B String Bool
+
+instance Show BOOL where
+--        show (B xs True) = xs ++ "<1>"
+--        show (B xs False) = xs ++ "<0>"
+        show (B xs True) = "1"
+        show (B xs False) = "0"
+
+xOR :: BOOL -> BOOL -> BOOL
+xOR (B x x') (B y y') = B (par x ++ "^" ++ par y) (x' /= y')
+  where par [x] = [x]
+        par other = "(" ++ other ++ ")"
+
+false = B "0" False
+true  = B "1" True
+
+str = map (\ x -> if x == '0' then false else true)
+
+-- 0x1021
+-- 0x8408
+
+--crc_spec :: [Bool] -> Bool -> [Bool]
+-- You need to step this 8 times; after xoring the low bits with the input byte.
+crc_spec :: [BOOL] -> [BOOL]
+crc_spec bs   = [ if x `elem` [12,5,0]
+                  then xOR b (last bs) -- b /= last bs
+                  else b
+                | (x,b) <- [0..] `zip` (false : init bs)
+                ]
+
+-- test txt n = reverse $ foldl crc_spec (reverse (str txt)) (replicate n false)
+--test n t = reverse $ foldl crc_spec (replicate 16 true) (replicate n false ++ [t])
