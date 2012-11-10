@@ -108,6 +108,9 @@ brd = Board $ error ""
 
 ----------------------------------------------------------------
 
+-- | connectBoard takes an initial timeout time,
+--  and a Bridge Frame to the board, and returns
+-- an abstact handle to the physical board.
 connectBoard :: Float -> Bridge Frame -> IO Board
 connectBoard timeoutTime bridge = do
 
