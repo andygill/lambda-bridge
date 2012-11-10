@@ -1,5 +1,5 @@
 Name:                lambda-bridge
-Version:             0.2.1.0
+Version:             0.3.1.0
 Synopsis:            A bridge from Haskell (on a CPU) to VHDL on a FPGA.
 Description:         A bridge from Haskell (on a CPU) to VHDL on a FPGA.
 License:             BSD3
@@ -9,16 +9,9 @@ Maintainer:          Andy Gill <andygill@ku.edu>
 Homepage:            http://www.ittc.ku.edu/csdl/fpg/Tools/LambdaBridge
 Stability:           Experimental
 Category:            Foreign, Hardware, Middleware, Network
-Tested-With:         GHC == 6.12.1
+Tested-With:         GHC == 7.6.1
 Cabal-Version:       >= 1.8
 Build-Type:          Simple
-
-extra-source-files:  connect/lb_board_connect.c
-		     connect/lb_board_connect.h
-		     Makefile
-		     README
-		     drivers/cat/lb_cat.c
-		     drivers/cat/Makefile
 
 Flag example
   Default: True
@@ -27,56 +20,13 @@ Flag example
 Library
   Build-Depends:   base >= 4 && < 5, network >= 2.3, binary, bytestring >= 0.9.1.10, random, time, data-default, containers, stm, directory, crc16, hslogger, unix >= 2.4
   Exposed-Modules:     Network.LambdaBridge
-                       Network.LambdaBridge.ARQ
                        Network.LambdaBridge.Bridge
-                       Network.LambdaBridge.Driver
                        Network.LambdaBridge.Frame
-                       Network.LambdaBridge.Multiplex
                        Network.LambdaBridge.Socket
                        Network.LambdaBridge.Timeout
 
   Other-modules:
                        Network.LambdaBridge.Logging
 
-  Hs-Source-Dirs:      .
-  Extensions:          ForeignFunctionInterface
-  C-Sources:           connect/lb_board_connect.c
-  Include-Dirs:        connect                       
-
--- Now the drivers.
-Executable lb_loopback
-   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring >= 0.9.1.10, random, time, data-default, containers, stm, directory, crc16, hslogger, unix >= 2.4
-   Hs-Source-Dirs: 	.  drivers/loopback
-   Main-Is: Main.hs
-
-Executable lb_byte
-   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring >= 0.9.1.10, random, time, data-default, containers, stm, directory, crc16, hslogger, unix >= 2.4
-   Hs-Source-Dirs: 	.  drivers/byte
-   Main-Is: Main.hs
-
-Executable lb_rs232
-   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring >= 0.9.1.10, random, time, data-default, containers, stm, directory, serialport, crc16, hslogger, unix >= 2.4
-   Hs-Source-Dirs: 	.  drivers/rs232
-   Main-Is: Main.hs
-   Ghc-Options: -threaded 
-
---Executable lb_udp
---   Build-Depends: 	base >= 4 && < 5, network >= 2.3, binary, bytestring >= 0.9.1.10, random, time, data-default, containers, stm, directory, crc16, hslogger, unix >= 2.4
---   Hs-Source-Dirs: 	.  drivers/udp
---   Main-Is: Main.hs
---   Ghc-Options: -threaded 
-
-
--- And the tools
-Executable lb_bridge
-   Build-Depends: base >= 4 && < 5, binary, bytestring >= 0.9.1.10, random, time, data-default, containers, stm, network, directory, crc16, hslogger, unix >= 2.4
-   Hs-Source-Dirs: . tools/bridge
-   Main-Is: Main.hs
-   GHC-Options: -threaded 
-
-Executable lb_bootstrap
-   Build-Depends: base >= 4 && < 5, binary, bytestring >= 0.9.1.10, random, time, data-default, containers, stm, network, directory, crc16, hslogger, unix >= 2.4
-   Hs-Source-Dirs: . tools/bootstrap
-   Main-Is: Main.hs
-   GHC-Options: -threaded 
+  GHC-Options: -threaded 
 
