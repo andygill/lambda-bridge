@@ -1,6 +1,6 @@
 -- | This modules sets up the hslogger details, including catching ^C.
 
-module Network.LambdaBridge.Logging 
+module Network.LambdaBridge.Logging
         ( init_logging
         , debugM
         ) where
@@ -19,12 +19,12 @@ import System.Posix.Process (getProcessID)
 -- use this instead of the debugM.
 debugM :: String -> String -> IO ()
 debugM logger msg = L.debugM logger msg
--- debugM logger msg = return () 
+-- debugM logger msg = return ()
 
 init_logging :: IO ()
 init_logging = do
         prog <- getProgName
-        env <- getEnv "LB_LOG" `Prelude.catch` const (return "")
+        env <- getEnv "LB_LOG" `E.catch` \ SomeException {} -> return ""
         pid <- getProcessID
         h <- fileHandler (prog ++ "." ++ show pid ++ ".log") DEBUG
         let f = setFormatter h (simpleLogFormatter $ "[" ++ prog ++ " : $loggername : $pid] $msg")
@@ -33,7 +33,7 @@ init_logging = do
         -- What we want to observe
         updateGlobalLogger "lambda-bridge" (setLevel DEBUG)
 
-        debugM "lambda-bridge" "initialized logging" 
+        debugM "lambda-bridge" "initialized logging"
 
 --        installHandler keyboardSignal (CatchOnce $ print "keyboardSignal") Nothing
 --        installHandler sigSTOP (CatchOnce $ print "sigSTOP") Nothing
