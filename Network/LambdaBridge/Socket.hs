@@ -88,7 +88,7 @@ openOnceAsServer nm = do
 -- anticipated hardware behaviour) as a lambda-bridge style service.
 -- (Cloud computing, mubble, buzzword, Haskell.)
 
-openModelOnceAsServer :: (Binary a, Binary b) => SocketName -> (a -> IO b) -> IO ()
+openModelOnceAsServer :: (Binary a, Binary b, Show b) => SocketName -> (a -> IO b) -> IO ()
 openModelOnceAsServer port fn = do
         hSetBuffering stdout NoBuffering
         debug "openModelOnceAsServer"
@@ -103,6 +103,7 @@ openModelOnceAsServer port fn = do
                 debug "calling model"
                 b <- fn a       -- call the callback
                 debug "replying from model"
+                print b
                 BS.hPutStr h $ encode b
                 hFlush h
                 loop bs' ix'

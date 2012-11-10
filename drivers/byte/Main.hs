@@ -27,4 +27,4 @@ lb_byte :: String -> String -> IO ()
 lb_byte src dest = do
         srcH <- openAsClient src
         srcB <- openByteBridge srcH
-        byte_driver srcB 10 254 dest
+        byte_driver srcB 1 254 dest

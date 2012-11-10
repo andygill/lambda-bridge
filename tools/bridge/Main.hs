@@ -52,7 +52,7 @@ buildBridge lhs rhs = do
         bridge2 <- openByteBridge hd2
 
         let real = def { loseU = 0.0
---                       , mangleU = 0.01 -- 1% 
+                       , mangleU = 0.001 -- 1% 
                        , mangler = \ r (Byte a) -> Byte (floor (r * 256) + a) 
 			}
 
