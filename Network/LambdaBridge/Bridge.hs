@@ -28,7 +28,7 @@ import System.IO.Unsafe (unsafeInterleaveIO)
 -- | A 'Bridge' is a bidirectional connection to a specific remote API.
 -- There are many different types of Bridges in the lambda-bridge API.
 
-data Bridge msg = Bridge 
+data Bridge msg = Bridge
 	{ toBridge 	:: msg -> IO ()	-- ^ write to a bridge; may block; called many times.
 	, fromBridge	:: IO msg	-- ^ read from a bridge; may block, called many times.
 					--   The expectation is that *eventually* after some
@@ -50,16 +50,37 @@ instance Show Byte where
    show (Byte w) = "0x" ++ showHex w ""
 
 --------------------------------------------------------------------------
+
+-- | A 'Bridge (of) Bytes' is for talking one byte at a time, where the
+-- byte may or may not get there, and may get garbled. The Bytes are
+-- sent in order. We provide Bytes because the underlying transportation
+-- mechansim *may* choose to send many bytes at the same time.
+-- Sending a empty sequence Bytes returns without communications,
+-- and it is not possible to receive a empty sequence of bytes.
+--
+-- An example of a 'Bridge (of) Bytes' is a RS-232 link.
+
+newtype Bytes = Bytes BS.ByteString deriving (Eq,Ord)
+
+instance Show Bytes where
+   show (Bytes ws) = "Bytes " ++ show [Byte w | w <- BS.unpack ws ]
+
+--------------------------------------------------------------------------
 -- | A 'Bridge (of) Frame' is small set of bytes, where a Frame may
--- or may not get to the destination, but if received, will 
+-- or may not get to the destination, but if received, will
 -- not be garbled or fragmented (via CRC or equiv).
 -- There is typically an implementation specific maximum size of a Frame.
 
 -- An example of a 'Bridge (of) Frame' is UDP.
 
-newtype Frame = Frame BS.ByteString 
+newtype Frame = Frame BS.ByteString
+
 instance Show Frame where
    show (Frame wds) = "Frame " ++ show [ Byte w | w <- BS.unpack wds ]
+
+instance Binary Frame where
+        put (Frame bs) = put bs
+        get = liftM Frame get
 
 -- | A way of turning a Frame into its contents, using the 'Binary' class.
 -- This may throw an async exception.
@@ -121,9 +142,9 @@ connectBridges lhs lhsOut rhsOut rhs = do
 	let optMangle f mangle a = do
 		b <- you f
 		if b then do
-		        r <- randomIO 
+		        r <- randomIO
 			return $ mangle r a
-		     else return a 
+		     else return a
 
 
         let unrely :: MVar UTCTime -> Realistic msg -> msg -> (msg -> IO ()) -> IO ()
@@ -139,8 +160,8 @@ connectBridges lhs lhsOut rhsOut rhs = do
 		  a <- optMangle (mangleU opts) (mangler opts) a
 		  b <- you (dupU opts)
 		  if b then do		   -- send twice, please
-		  	k a			
-		  	k a			
+		  	k a
+		  	k a
 		       else do
 	                k a
 		tm <- getCurrentTime
